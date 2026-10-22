@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="app-build" content="202610221927">
+<meta name="app-build" content="202610221945">
 <title>Stayline</title>
 <link rel="icon" href="logo.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -182,7 +182,7 @@ tbody tr:hover td{background:var(--panel-2)}
 #ac-versao button{background:#fff;color:#7a3e06;border:0;border-radius:999px;padding:5px 14px;font-weight:700}
 :root[data-theme="dark"] #ac-versao{color:#1b1206}
 
-@media (max-width:1360px){ .top .icon-btn:not(#noite-wrap) > span{display:none} .top .icon-btn{padding:0 8px} }
+@media (max-width:1360px){ .top .icon-btn > span{display:none} .top .icon-btn{padding:0 8px} }
 @media (max-width:980px){
   .shell{grid-template-columns:1fr}
   .side{position:static;height:auto;flex-direction:row;flex-wrap:nowrap;overflow-x:auto;align-items:center;padding:8px 10px;gap:2px}
@@ -232,8 +232,8 @@ tbody tr:hover td{background:var(--panel-2)}
 <div id="app" class="shell" hidden>
   <aside class="side">
     <div class="brand"><img src="logo.svg" alt=""><div><b>Stayline</b><small data-i18n="app.tag"></small></div></div>
-    <button type="button" class="nav" data-view="hoje"><svg viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg><span data-i18n="nav.hoje"></span></button>
-    <button type="button" class="nav" data-view="hoteis"><svg viewBox="0 0 24 24"><path d="M3 21V7l9-4 9 4v14"/><path d="M9 21v-6h6v6M8 10h.01M12 10h.01M16 10h.01"/></svg><span data-i18n="nav.hoteis"></span></button>
+    <button type="button" class="nav" data-view="operacao"><svg viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg><span data-i18n="nav.operacao"></span></button>
+    <button type="button" class="nav" data-view="antecipa"><svg viewBox="0 0 24 24"><path d="M12 3v18M16.5 7.5c0-1.7-2-3-4.5-3s-4.5 1.3-4.5 3 2 2.6 4.5 3 4.5 1.3 4.5 3-2 3-4.5 3-4.5-1.3-4.5-3"/></svg><span data-i18n="nav.antecipa"></span></button>
     <button type="button" class="nav" data-view="sugestoes"><svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 21l1.9-5.4A8 8 0 1 1 21 12z"/></svg><span data-i18n="nav.sugestoes"></span></button>
     <button type="button" class="nav" data-view="equipe" data-admin hidden><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M21.5 20a6.5 6.5 0 0 0-4-6"/></svg><span data-i18n="nav.equipe"></span></button>
     <div class="grow"></div>
@@ -242,7 +242,6 @@ tbody tr:hover td{background:var(--panel-2)}
   <div class="main">
     <header class="top">
       <h1 id="top-titulo"></h1>
-      <label class="icon-btn" id="noite-wrap"><span data-i18n="top.noite"></span><input id="noite" type="date" style="border:0;background:transparent;font-weight:600;color:var(--ink)"></label>
       <button type="button" class="icon-btn" id="btn-tour"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .9-1 1.7M12 17h.01"/></svg><span data-i18n="top.tour"></span></button>
       <button type="button" class="icon-btn" id="btn-valid"><svg viewBox="0 0 24 24"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/></svg><span data-i18n="top.validar"></span><b class="cnt" hidden></b></button>
       <button type="button" class="icon-btn" id="btn-nov"><svg viewBox="0 0 24 24"><path d="M12 3l2 5 5 2-5 2-2 5-2-5-5-2 5-2z"/></svg><span data-i18n="top.novidades"></span></button>
@@ -251,8 +250,9 @@ tbody tr:hover td{background:var(--panel-2)}
       <button type="button" class="icon-btn" id="btn-sair"><svg viewBox="0 0 24 24"><path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10"/></svg><span data-i18n="top.sair"></span></button>
     </header>
     <main class="content">
-      <section class="view" id="view-hoje"></section>
+      <section class="view" id="view-operacao"></section>
       <section class="view" id="view-hoteis"></section>
+      <section class="view" id="view-antecipa"></section>
       <section class="view" id="view-sugestoes"></section>
       <section class="view" id="view-equipe"></section>
     </main>
@@ -265,6 +265,9 @@ tbody tr:hover td{background:var(--panel-2)}
 <script src="i18n.js"></script>
 <script src="app.js"></script>
 <script src="acompanhante.js"></script>
+<script src="operacao.js"></script>
+<script src="ficha.js"></script>
+<script src="antecipa.js"></script>
 <script src="tour.js"></script>
 </body>
 </html>

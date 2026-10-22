@@ -10,19 +10,20 @@ const lsSet = (k,v)=>{ try{ localStorage.setItem(k,v); }catch(e){} };
 
 /* ---------- apresentação guiada ---------- */
 const PASSOS = [
-  { alvo:'.side .brand', view:'hoje', k:'bemvindo' },
-  { alvo:'#noite-wrap', view:'hoje', k:'noite' },
-  { alvo:'.chips', view:'hoje', k:'chips' },
-  { alvo:'.chip.k-a_alocar', view:'hoje', k:'a_alocar' },
-  { alvo:'.chip.k-alocado', view:'hoje', k:'alocado' },
-  { alvo:'.chip.k-a_reconfirmar', view:'hoje', k:'a_reconfirmar' },
-  { alvo:'.occ', view:'hoje', k:'ocupacao' },
-  { alvo:'#view-hoje tbody tr', view:'hoje', k:'linha' },
-  { alvo:'#h-auto', view:'hoje', k:'auto' },
-  { alvo:'#h-imp', view:'hoje', k:'importar' },
-  { alvo:'.nav[data-view=hoteis]', view:'hoje', k:'hoteis' },
-  { alvo:'#ac-btn', view:'hoje', k:'balao' },
-  { alvo:'#btn-valid', view:'hoje', k:'validar' }
+  { alvo:'.side .brand', view:'operacao', k:'bemvindo' },
+  { alvo:'#op-periodo', view:'operacao', k:'noite' },
+  { alvo:'.chips', view:'operacao', k:'chips' },
+  { alvo:'.chip.k-a_alocar', view:'operacao', k:'a_alocar' },
+  { alvo:'.chip.k-alocado', view:'operacao', k:'alocado' },
+  { alvo:'.chip.k-a_reconfirmar', view:'operacao', k:'a_reconfirmar' },
+  { alvo:'#op-bot', view:'operacao', k:'ocupacao' },
+  { alvo:'#op-top', view:'operacao', k:'linha' },
+  { alvo:'#h-auto', view:'operacao', k:'auto' },
+  { alvo:'#h-imp', view:'operacao', k:'importar' },
+  { alvo:'#op-contratos', view:'operacao', k:'hoteis' },
+  { alvo:'.nav[data-view=antecipa]', view:'operacao', k:'antecipa' },
+  { alvo:'#ac-btn', view:'operacao', k:'balao' },
+  { alvo:'#btn-valid', view:'operacao', k:'validar' }
 ];
 let passo = 0;
 function tourAbrir(){ passo = 0; const f = document.getElementById('nov-faixa'); if(f) f.hidden = true; desenhar(); }

@@ -1,5 +1,6 @@
 /* Stayline — pernoites de tripulação em linha do tempo.
-   Telas: Hoje (fila da noite), Hotéis e contratos, Sugestões, Equipe (admin). Banco: Supabase da Capacity Case, tabelas prn_*. */
+   Telas: Operação (operacao.js, tracking no molde do Smart Escala), Contratos, Antecipa (antecipa.js), Sugestões, Equipe (admin).
+   Banco: Supabase da Capacity Case, tabelas prn_*. */
 (function(){
 'use strict';
 const CONFIG = {
@@ -8,7 +9,7 @@ const CONFIG = {
 };
 const sb = window.supabase.createClient(CONFIG.url, CONFIG.anon);
 const SITS = ['a_alocar','a_reconfirmar','alocado','confirmado','cancelado'];
-const S = { lang:'pt', email:'', membro:null, view:'hoje', noite:hojeISO(), pern:[], hoteis:[], bases:[], filtro:'todos', busca:'', base:'', novidades:[], sugestoes:[], membros:[] };
+const S = { lang:'pt', email:'', membro:null, view:'operacao', noite:hojeISO(), ini:hojeISO(), fim:somaDias(hojeISO(),6), disp:{}, config:{}, pern:[], hoteis:[], bases:[], filtro:'todos', busca:'', base:'', novidades:[], sugestoes:[], membros:[] };
 
 /* ---------- utilidades ---------- */
 const $ = (s, el=document) => el.querySelector(s);
@@ -18,6 +19,7 @@ function lsGet(k,d){ try{ const v = localStorage.getItem(k); return v==null ? d 
 function lsSet(k,v){ try{ localStorage.setItem(k, v); }catch(e){} }
 function t(k, vars){ const d = (window.I18N[S.lang]||{})[k] ?? window.I18N.pt[k] ?? k; return vars ? d.replace(/\{(\w+)\}/g, (_,n)=> vars[n]!=null ? vars[n] : '') : d; }
 function hojeISO(){ const d = new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function somaDias(iso, n){ const [y,m,d] = iso.split('-').map(Number); const x = new Date(y, m-1, d+n); return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0'); }
 function diaLocal(iso, h){ const [y,m,d] = iso.split('-').map(Number); return new Date(y, m-1, d, h, 0, 0); }
 const loc = ()=> S.lang==='pt' ? 'pt-BR' : 'en-US';
 const fHora = d => new Date(d).toLocaleTimeString(loc(), {hour:'2-digit', minute:'2-digit'});
@@ -114,28 +116,39 @@ async function sessao(session){
   $$('[data-admin]').forEach(el=> el.hidden = !ehAdmin());
   try{ await sb.rpc('prn_exemplo_rolar'); }catch(e){}
   await carregarBase();
-  irPara(location.hash.replace('#','') || 'hoje');
+  irPara(location.hash.replace('#','') || 'operacao');
   novidadesIniciar();
   window.dispatchEvent(new CustomEvent('sl-entrou'));
 }
 
 /* ---------- dados ---------- */
 async function carregarBase(){
-  const [b, h] = await Promise.all([ sb.from('prn_bases').select('*').order('codigo'), sb.from('prn_hoteis').select('*').order('base').order('tipo') ]);
+  const [b, h, d, c] = await Promise.all([ sb.from('prn_bases').select('*').order('codigo'), sb.from('prn_hoteis').select('*').order('base').order('tipo'),
+    sb.from('prn_disponibilidade').select('*').gte('noite', somaDias(hojeISO(),-1)), sb.from('prn_config').select('*') ]);
   S.bases = b.data || []; S.hoteis = h.data || [];
+  S.disp = {}; (d.data || []).forEach(r=> S.disp[r.hotel_id+'|'+r.noite] = r);          // quartos livres informados pelo hotel (API) por noite
+  S.config = {}; (c.data || []).forEach(r=> S.config[r.chave] = r.valor);
   await carregarNoite();
 }
+// Período da Operação (como no Smart Escala): vários dias no mesmo eixo. Cada pernoite pertence à "noite" da chegada
+// (chegada antes das 6h conta na noite anterior). Busca paginada: o banco corta em 1000 linhas por vez.
 async function carregarNoite(){
-  const ini = diaLocal(S.noite, 6), fim = diaLocal(S.noite, 30);
-  const { data, error } = await sb.from('prn_pernoites').select('*').gte('chegada', ini.toISOString()).lt('chegada', fim.toISOString()).order('chegada');
-  if(error){ showToast(t('gen.erro', {m:error.message})); S.pern = []; return; }
-  S.pern = data || [];
+  const ini = diaLocal(S.ini, 6), fim = diaLocal(S.fim, 30);
+  const PAG = 1000; let pag = 0, todos = [];
+  while(true){
+    const { data, error } = await sb.from('prn_pernoites').select('*').gte('chegada', ini.toISOString()).lt('chegada', fim.toISOString()).order('chegada').range(pag*PAG, pag*PAG+PAG-1);
+    if(error){ showToast(t('gen.erro', {m:error.message})); S.pern = []; return; }
+    todos = todos.concat(data || []); if(!data || data.length < PAG) break; pag++;
+  }
+  S.pern = todos;
 }
+function noiteDe(p){ const d = new Date(new Date(p.chegada).getTime() - 6*3600000); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 const hotelPor = id => S.hoteis.find(h=>h.id===id);
-function usados(hotelId, exceto){ return S.pern.filter(p=>p.hotel_id===hotelId && p.situacao!=='cancelado' && p.id!==exceto).reduce((a,p)=>a+p.qtd, 0); }
+function usados(hotelId, noite, exceto){ return S.pern.filter(p=>p.hotel_id===hotelId && p.situacao!=='cancelado' && p.id!==exceto && noiteDe(p)===noite).reduce((a,p)=>a+p.qtd, 0); }
 function opcoesHotel(p){
   const hs = S.hoteis.filter(h=>h.base===p.base && h.ativo).sort((a,b)=> (a.tipo==='primario'?0:1)-(b.tipo==='primario'?0:1));
-  const lista = hs.map(h=>({ h, livres: h.quartos_dia - usados(h.id, p.id) }));
+  const noite = noiteDe(p);
+  const lista = hs.map(h=>({ h, livres: h.quartos_dia - usados(h.id, noite, p.id) }));
   const sug = lista.find(o=>o.livres >= p.qtd);
   return { lista, sug: sug ? sug.h.id : null };
 }
@@ -150,60 +163,19 @@ async function atualizarPernoite(p, campos, acao){
 
 /* ---------- navegação ---------- */
 $$('.nav').forEach(b=> b.addEventListener('click', ()=> irPara(b.dataset.view)));
+const VIEWS = ['operacao','hoteis','antecipa','sugestoes','equipe'];
 function irPara(v){
-  if(!['hoje','hoteis','sugestoes','equipe'].includes(v) || (v==='equipe' && !ehAdmin())) v = 'hoje';
+  if(v==='hoje') v = 'operacao';
+  if(!VIEWS.includes(v) || (v==='equipe' && !ehAdmin())) v = 'operacao';
   S.view = v; history.replaceState(null, '', '#'+v);
-  $$('.nav').forEach(b=> b.classList.toggle('on', b.dataset.view===v));
+  $$('.nav').forEach(b=> b.classList.toggle('on', b.dataset.view===v || (v==='hoteis' && b.dataset.view==='operacao')));
   $$('.view').forEach(s=> s.classList.toggle('active', s.id==='view-'+v));
-  $('#noite-wrap').hidden = !(v==='hoje' || v==='hoteis');
   render();
 }
 window.SL_view = ()=> S.view;
-$('#noite').addEventListener('change', async e=>{ if(!e.target.value) return; S.noite = e.target.value; await carregarNoite(); render(); });
 function render(){
-  $('#noite').value = S.noite;
   $('#top-titulo').textContent = t('nav.'+S.view);
-  if(S.view==='hoje') renderHoje(); else if(S.view==='hoteis') renderHoteis(); else if(S.view==='sugestoes') renderSugestoes(); else if(S.view==='equipe') renderEquipe();
-}
-
-/* ---------- HOJE ---------- */
-const AX_INI = 12, AX_FIM = 40; // eixo: 12h da noite escolhida até 16h do dia seguinte
-function posHora(d){ const base = diaLocal(S.noite, 0).getTime(); return ((new Date(d).getTime() - base)/3600000 - AX_INI) / (AX_FIM - AX_INI) * 100; }
-function renderHoje(){
-  const v = $('#view-hoje');
-  const cont = { todos:S.pern.length }; SITS.forEach(s=> cont[s] = S.pern.filter(p=>p.situacao===s).length);
-  const temExemplo = S.pern.some(p=>p.exemplo);
-  const q = S.busca.toLowerCase();
-  const linhas = S.pern.filter(p=> (S.filtro==='todos' || p.situacao===S.filtro) && (!S.base || p.base===S.base) && (!q || [p.lider,p.voo_chegada,p.voo_saida,p.base,(hotelPor(p.hotel_id)||{}).nome].join(' ').toLowerCase().includes(q)));
-  // ocupação por hotel
-  const occ = S.bases.map(b=>{ const hs = S.hoteis.filter(h=>h.base===b.codigo && h.ativo); return { b, hs:hs.map(h=>({ h, u:usados(h.id) })) }; }).filter(x=>x.hs.length);
-  const ticks = [12,18,24,30,36]; const agoraPos = posHora(new Date());
-  v.innerHTML = `
-    <div class="head"><div><h2>${esc(t('hoje.titulo'))} ${temExemplo?`<span class="tag amber">${esc(t('hoje.exemplo'))}</span>`:''}</h2><p>${esc(t('hoje.sub'))}</p></div>
-      <div class="acts"><button class="btn" id="h-imp" type="button">${esc(t('hoje.importar'))}</button><button class="btn" id="h-auto" type="button">${esc(t('hoje.auto'))}</button><button class="btn pri" id="h-novo" type="button">+ ${esc(t('hoje.novo'))}</button></div></div>
-    <div class="chips">${['todos',...SITS].map(k=>`<button type="button" class="chip k-${k}" data-f="${k}" aria-pressed="${S.filtro===k}"><b>${cont[k]}</b><span>${esc(k==='todos'?t('chip.todos'):t('sit.'+k))}</span></button>`).join('')}</div>
-    <div class="card occ"><div class="occ-h"><b>${esc(t('hoje.ocupacao'))}</b><span class="muted">${esc(t('hoje.ocupacao.sub'))}</span></div>
-      <div class="occ-grid">${occ.map(x=> x.hs.map(({h,u})=>{ const pc = h.quartos_dia ? Math.min(100, u/h.quartos_dia*100) : 0; const cls = pc>=100?'full':pc>=80?'mid':'';
-        return `<div class="occ-row"><span class="mono"><b>${esc(x.b.codigo)}</b></span><div class="meter"><i class="${cls}" style="width:${pc}%"></i></div><span class="mono">${u}/${h.quartos_dia}${pc>=100?' ●':''}</span><span class="nm">${esc(h.nome)} · ${esc(h.tipo==='primario'?t('ht.primario'):t('ht.secundario'))}</span></div>`; }).join('')).join('')}</div></div>
-    <div class="card tl"><div class="tl-tools"><input id="h-busca" type="search" placeholder="${esc(t('hoje.busca'))}" value="${esc(S.busca)}" aria-label="${esc(t('hoje.busca'))}">
-      <select id="h-base" aria-label="${esc(t('col.base'))}"><option value="">${esc(t('hoje.todas_bases'))}</option>${S.bases.map(b=>`<option value="${esc(b.codigo)}" ${S.base===b.codigo?'selected':''}>${esc(b.codigo)} · ${esc(b.cidade)}</option>`).join('')}</select>
-      <span class="conta">${esc(t('hoje.mostrando',{n:linhas.length,total:S.pern.length}))}</span></div>
-      <div class="tl-scroll"><table><thead><tr><th>${esc(t('col.situacao'))}</th><th>${esc(t('col.trip'))}</th><th>${esc(t('col.voos'))}</th><th>${esc(t('col.base'))}</th><th>${esc(t('col.hotel'))}</th><th>${esc(t('col.quartos'))}</th>
-        <th style="min-width:320px"><div class="axis-h">${ticks.map(h=>`<span style="left:${(h-AX_INI)/(AX_FIM-AX_INI)*100}%">${String(h%24).padStart(2,'0')}h</span>`).join('')}</div></th></tr></thead>
-      <tbody>${linhas.map(p=>{ const h = hotelPor(p.hotel_id); const l = Math.max(0, posHora(p.chegada)), r = Math.min(100, posHora(p.saida));
-        return `<tr data-id="${p.id}"><td><span class="pill s-${p.situacao}">${esc(t('sit.'+p.situacao))}</span>${p.origem==='nao_previsto'?`<div class="sub">${esc(t('orig.nao_previsto'))}</div>`:''}</td>
-          <td><b>${esc(p.lider)}</b>${p.qtd>1?` <span class="muted">+${p.qtd-1}</span>`:''}${p.motivo?`<div class="sub">${esc(p.motivo)}</div>`:''}</td>
-          <td class="mono">${esc(p.voo_chegada||'–')} → ${esc(p.voo_saida||'–')}<div class="sub">${fHora(p.chegada)} → ${fDiaHora(p.saida)}</div></td>
-          <td class="mono"><b>${esc(p.base)}</b></td><td>${h?esc(h.nome):'<span class="muted">—</span>'}</td><td class="mono">${p.qtd}</td>
-          <td><div class="bar">${ticks.slice(1,-1).map(x=>`<span class="tick" style="left:${(x-AX_INI)/(AX_FIM-AX_INI)*100}%"></span>`).join('')}${agoraPos>0&&agoraPos<100?`<span class="now" style="left:${agoraPos}%"></span>`:''}<i class="b-${p.situacao}" style="left:${l}%;width:${Math.max(1,r-l)}%"></i></div></td></tr>`; }).join('')}</tbody></table>
-      ${linhas.length?'':`<div class="empty">${esc(t('hoje.vazio'))}</div>`}</div></div>`;
-  $$('[data-f]', v).forEach(b=> b.addEventListener('click', ()=>{ S.filtro = b.dataset.f; renderHoje(); }));
-  const bs = $('#h-busca'); bs.addEventListener('input', ()=>{ S.busca = bs.value; const pos = bs.selectionStart; renderHoje(); const n = $('#h-busca'); n.focus(); n.setSelectionRange(pos,pos); });
-  $('#h-base').addEventListener('change', e=>{ S.base = e.target.value; renderHoje(); });
-  $$('tbody tr', v).forEach(tr=> tr.addEventListener('click', ()=> modalPernoite(S.pern.find(p=>p.id===tr.dataset.id))));
-  $('#h-novo').addEventListener('click', ()=> modalNovo());
-  $('#h-auto').addEventListener('click', alocarPendentes);
-  $('#h-imp').addEventListener('click', modalImportar);
+  if(S.view==='operacao') window.SL_renderOperacao && window.SL_renderOperacao(); else if(S.view==='hoteis') renderHoteis(); else if(S.view==='antecipa') window.SL_renderAntecipa && window.SL_renderAntecipa(); else if(S.view==='sugestoes') renderSugestoes(); else if(S.view==='equipe') renderEquipe();
 }
 
 function modalPernoite(p){
@@ -314,15 +286,16 @@ function modalImportar(){
 /* ---------- HOTÉIS ---------- */
 function renderHoteis(){
   const v = $('#view-hoteis');
-  v.innerHTML = `<div class="head"><div><h2>${esc(t('ht.titulo'))}</h2><p>${esc(t('ht.sub'))}</p></div><div class="acts"><button class="btn" id="b-nova" type="button">+ ${esc(t('ht.nova_base'))}</button><button class="btn pri" id="h-nova" type="button">+ ${esc(t('ht.novo'))}</button></div></div>
+  v.innerHTML = `<div class="head"><div><h2>${esc(t('ht.titulo'))}</h2><p>${esc(t('ht.sub'))}</p></div><div class="acts"><button class="btn" id="h-voltar" type="button">← ${esc(t('nav.operacao'))}</button><button class="btn" id="b-nova" type="button">+ ${esc(t('ht.nova_base'))}</button><button class="btn pri" id="h-nova" type="button">+ ${esc(t('ht.novo'))}</button></div></div>
     <div class="grid-bases">${S.bases.map(b=>{ const hs = S.hoteis.filter(h=>h.base===b.codigo);
       return `<div class="card base-card"><div class="base-h"><div><b>${esc(b.codigo)}</b> <span class="muted">${esc(b.cidade)}${b.uf?' · '+esc(b.uf):''}</span></div></div>
         ${hs.length?`<div class="tl-scroll"><table><thead><tr><th>${esc(t('ht.nome'))}</th><th>${esc(t('ht.tipo'))}</th><th>${esc(t('ht.tarifa'))}</th><th>${esc(t('ht.quartos'))}</th><th>${esc(t('ht.hoje'))}</th></tr></thead><tbody>
-        ${hs.map(h=>{ const u = usados(h.id), pc = h.quartos_dia? Math.min(100,u/h.quartos_dia*100):0; return `<tr data-h="${h.id}"><td><b>${esc(h.nome)}</b>${h.ativo?'':' <span class="tag">off</span>'}<div class="sub">${esc(h.servicos||'')}</div></td><td><span class="tag">${esc(h.tipo==='primario'?t('ht.primario'):t('ht.secundario'))}</span></td><td class="mono">${fMoeda(h.tarifa)}</td><td class="mono">${h.quartos_dia}</td><td><div style="display:flex;gap:8px;align-items:center"><div class="meter" style="width:70px"><i class="${pc>=100?'full':pc>=80?'mid':''}" style="width:${pc}%"></i></div><span class="mono">${u}/${h.quartos_dia}</span></div></td></tr>`; }).join('')}</tbody></table></div>`
+        ${hs.map(h=>{ const u = usados(h.id, hojeISO()), pc = h.quartos_dia? Math.min(100,u/h.quartos_dia*100):0; return `<tr data-h="${h.id}"><td><b>${esc(h.nome)}</b>${h.ativo?'':' <span class="tag">off</span>'}<div class="sub">${esc(h.servicos||'')}</div></td><td><span class="tag">${esc(h.tipo==='primario'?t('ht.primario'):t('ht.secundario'))}</span></td><td class="mono">${fMoeda(h.tarifa)}</td><td class="mono">${h.quartos_dia}</td><td><div style="display:flex;gap:8px;align-items:center"><div class="meter" style="width:70px"><i class="${pc>=100?'full':pc>=80?'mid':''}" style="width:${pc}%"></i></div><span class="mono">${u}/${h.quartos_dia}</span></div></td></tr>`; }).join('')}</tbody></table></div>`
         :`<div class="empty">${esc(t('ht.sem'))}</div>`}</div>`; }).join('')}</div>`;
   $$('tr[data-h]', v).forEach(tr=> tr.addEventListener('click', ()=> modalHotel(hotelPor(tr.dataset.h))));
   $('#h-nova').addEventListener('click', ()=> modalHotel(null));
   $('#b-nova').addEventListener('click', modalBase);
+  $('#h-voltar').addEventListener('click', ()=> irPara('operacao'));
 }
 function modalHotel(h){
   if(!guard()) return; const n = h || { base:(S.bases[0]||{}).codigo, tipo:'primario', comissao_pct:10, quartos_dia:10, ativo:true };
@@ -453,6 +426,9 @@ async function novidadesIniciar(){
 }
 
 /* ---------- partida ---------- */
+// a tela Operação (operacao.js) usa o estado e as ações daqui
+window.SLX = { S, sb, t, esc, $, $$, fHora, fDiaHora, fData, fMoeda, hojeISO, somaDias, diaLocal, noiteDe, hotelPor, usados, opcoesHotel, atualizarPernoite, guard, podeEscrever,
+  modalPernoite, modalNovo, modalImportar, modalHotel, modalBase, alocarPendentes, carregarNoite, carregarBase, render, irPara, abrirModal, fecharModal, ehAdmin, lsGet, lsSet };
 window.SL = { sb, t, get lang(){ return S.lang; }, get email(){ return S.email; }, get nome(){ return (S.membro&&S.membro.nome) || S.email.split('@')[0]; }, view:()=>S.view, irPara };
 $('#btn-tour').addEventListener('click', ()=> window.SL_tourAbrir && window.SL_tourAbrir());
 $('#btn-valid').addEventListener('click', ()=> window.SL_validarAbrir && window.SL_validarAbrir());
