@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="app-build" content="202610221919">
+<meta name="app-build" content="202610221927">
 <title>Stayline</title>
 <link rel="icon" href="logo.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -66,6 +66,14 @@ button{cursor:pointer}
 .icon-btn{border:1px solid var(--line-2);background:var(--panel);border-radius:8px;height:32px;min-width:32px;padding:0 9px;display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--ink-2)}
 .icon-btn svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .icon-btn.novo{background:var(--amber-soft);border-color:var(--amber);color:var(--amber)}
+.icon-btn .cnt{background:var(--red);color:#fff;border-radius:999px;font-size:11px;min-width:18px;height:18px;display:inline-grid;place-items:center;padding:0 5px}
+.tl-tools select{border:1px solid var(--line-2);background:var(--panel);border-radius:8px;padding:7px 10px}
+.tl-tools .conta{margin-left:auto;font-size:12.5px;color:var(--ink-3)}
+.tl .tl-scroll{max-height:calc(100vh - 170px);overflow:auto}
+.tl thead th{position:sticky;top:0;z-index:2}
+.val-tab td{white-space:normal;vertical-align:top}
+.eq-form{grid-template-columns:2fr 2fr 1fr auto;align-items:end}
+@media (max-width:760px){ .eq-form{grid-template-columns:1fr} }
 .content{padding:22px 24px 90px;display:grid;gap:18px;max-width:1400px;width:100%}
 .view{display:none}
 .view.active{display:grid;gap:18px}
@@ -174,11 +182,15 @@ tbody tr:hover td{background:var(--panel-2)}
 #ac-versao button{background:#fff;color:#7a3e06;border:0;border-radius:999px;padding:5px 14px;font-weight:700}
 :root[data-theme="dark"] #ac-versao{color:#1b1206}
 
+@media (max-width:1360px){ .top .icon-btn:not(#noite-wrap) > span{display:none} .top .icon-btn{padding:0 8px} }
 @media (max-width:980px){
   .shell{grid-template-columns:1fr}
-  .side{position:static;height:auto;flex-direction:row;flex-wrap:wrap;padding:10px}
-  .brand{padding:4px 8px}
+  .side{position:static;height:auto;flex-direction:row;flex-wrap:nowrap;overflow-x:auto;align-items:center;padding:8px 10px;gap:2px}
+  .brand{padding:2px 8px 2px 2px;flex:none} .side .brand small{display:none}
+  .nav{flex:none;white-space:nowrap}
   .side .grow,.side .quem{display:none}
+  .top{position:static}
+  .tl .tl-scroll{max-height:70vh}
   .chips{grid-template-columns:repeat(3,minmax(0,1fr))}
   .grid-bases{grid-template-columns:1fr}
   .content{padding:16px 16px 90px}
@@ -231,6 +243,8 @@ tbody tr:hover td{background:var(--panel-2)}
     <header class="top">
       <h1 id="top-titulo"></h1>
       <label class="icon-btn" id="noite-wrap"><span data-i18n="top.noite"></span><input id="noite" type="date" style="border:0;background:transparent;font-weight:600;color:var(--ink)"></label>
+      <button type="button" class="icon-btn" id="btn-tour"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .9-1 1.7M12 17h.01"/></svg><span data-i18n="top.tour"></span></button>
+      <button type="button" class="icon-btn" id="btn-valid"><svg viewBox="0 0 24 24"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/></svg><span data-i18n="top.validar"></span><b class="cnt" hidden></b></button>
       <button type="button" class="icon-btn" id="btn-nov"><svg viewBox="0 0 24 24"><path d="M12 3l2 5 5 2-5 2-2 5-2-5-5-2 5-2z"/></svg><span data-i18n="top.novidades"></span></button>
       <div class="seg" data-lang-seg><button type="button" data-lang="pt">PT</button><button type="button" data-lang="en">EN</button></div>
       <button type="button" class="icon-btn" data-theme-btn></button>
@@ -251,5 +265,6 @@ tbody tr:hover td{background:var(--panel-2)}
 <script src="i18n.js"></script>
 <script src="app.js"></script>
 <script src="acompanhante.js"></script>
+<script src="tour.js"></script>
 </body>
 </html>

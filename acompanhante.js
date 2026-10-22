@@ -62,6 +62,7 @@ let cliques = [];
 document.addEventListener('click', e=>{
   const el = e.target; if(!(el instanceof Element) || el.closest('#ac-root,#ac-versao,#ac-sel,#ac-ed')) return;
   const r = rotulo(el); if(!r) return; uso('clique', r);
+  if(el.closest('#tour,.val-bt,.chip,[data-tb]')) return;                                  // passar passos e marcar respostas não é "travou"
   const agora = Date.now(); cliques.push({ t:agora, x:e.clientX, y:e.clientY, k:r }); cliques = cliques.filter(c=>agora-c.t <= 1000);
   if(cliques.filter(c=>c.k===r && Math.abs(c.x-e.clientX)<=30 && Math.abs(c.y-e.clientY)<=30).length >= 3){ uso('raiva', r); cliques = []; duvida('travou'); }
 }, true);
@@ -82,7 +83,7 @@ function montar(){
 }
 function rotular(){ const b = document.getElementById('ac-btn'); if(b){ b.title = t('ac.btn'); b.setAttribute('aria-label', t('ac.btn')); } }
 window.addEventListener('sl-idioma', rotular);
-const ocupado = ()=> !!document.querySelector('#modal-root .modal-bg') || !document.getElementById('ac-box').hidden || ac.rec;
+const ocupado = ()=> !!document.querySelector('#modal-root .modal-bg') || !!document.getElementById('tour') || !document.getElementById('ac-box').hidden || ac.rec;
 function fecharBalao(como){ const b = document.getElementById('ac-bubble'); clearTimeout(ac.timer); if(!b.hidden){ b.hidden = true; uso('balao', ac.motivo, { evento:'fechou', resposta:como }); } }
 function mostrarBalao(motivo, pergunta){
   montar(); if(!email() || SEM_BALAO.includes(email()) || ocupado()) return false;

@@ -8,7 +8,7 @@ const CONFIG = {
 };
 const sb = window.supabase.createClient(CONFIG.url, CONFIG.anon);
 const SITS = ['a_alocar','a_reconfirmar','alocado','confirmado','cancelado'];
-const S = { lang:'pt', email:'', membro:null, view:'hoje', noite:hojeISO(), pern:[], hoteis:[], bases:[], filtro:'todos', busca:'', novidades:[], sugestoes:[], membros:[] };
+const S = { lang:'pt', email:'', membro:null, view:'hoje', noite:hojeISO(), pern:[], hoteis:[], bases:[], filtro:'todos', busca:'', base:'', novidades:[], sugestoes:[], membros:[] };
 
 /* ---------- utilidades ---------- */
 const $ = (s, el=document) => el.querySelector(s);
@@ -53,7 +53,8 @@ function aplicarIdioma(){
   $$('[data-i18n]').forEach(el=> el.textContent = t(el.dataset.i18n));
   $$('[data-lang-seg] button').forEach(b=> b.classList.toggle('on', b.dataset.lang===S.lang));
   aplicarTemaBotoes();
-  $('#btn-nov').setAttribute('aria-label', t('top.novidades'));
+  [['#btn-nov','top.novidades'],['#btn-tour','top.tour'],['#btn-valid','top.validar'],['#btn-sair','top.sair']].forEach(([s,k])=>{ const b = $(s); b.title = t(k); b.setAttribute('aria-label', t(k)); });
+  $$('[data-lang-seg]').forEach(g=> g.title = t('top.idioma'));
   if(S.membro) render();
   window.dispatchEvent(new CustomEvent('sl-idioma'));
 }
@@ -115,6 +116,7 @@ async function sessao(session){
   await carregarBase();
   irPara(location.hash.replace('#','') || 'hoje');
   novidadesIniciar();
+  window.dispatchEvent(new CustomEvent('sl-entrou'));
 }
 
 /* ---------- dados ---------- */
@@ -172,7 +174,7 @@ function renderHoje(){
   const cont = { todos:S.pern.length }; SITS.forEach(s=> cont[s] = S.pern.filter(p=>p.situacao===s).length);
   const temExemplo = S.pern.some(p=>p.exemplo);
   const q = S.busca.toLowerCase();
-  const linhas = S.pern.filter(p=> (S.filtro==='todos' || p.situacao===S.filtro) && (!q || [p.lider,p.voo_chegada,p.voo_saida,p.base,(hotelPor(p.hotel_id)||{}).nome].join(' ').toLowerCase().includes(q)));
+  const linhas = S.pern.filter(p=> (S.filtro==='todos' || p.situacao===S.filtro) && (!S.base || p.base===S.base) && (!q || [p.lider,p.voo_chegada,p.voo_saida,p.base,(hotelPor(p.hotel_id)||{}).nome].join(' ').toLowerCase().includes(q)));
   // ocupação por hotel
   const occ = S.bases.map(b=>{ const hs = S.hoteis.filter(h=>h.base===b.codigo && h.ativo); return { b, hs:hs.map(h=>({ h, u:usados(h.id) })) }; }).filter(x=>x.hs.length);
   const ticks = [12,18,24,30,36]; const agoraPos = posHora(new Date());
@@ -183,7 +185,9 @@ function renderHoje(){
     <div class="card occ"><div class="occ-h"><b>${esc(t('hoje.ocupacao'))}</b><span class="muted">${esc(t('hoje.ocupacao.sub'))}</span></div>
       <div class="occ-grid">${occ.map(x=> x.hs.map(({h,u})=>{ const pc = h.quartos_dia ? Math.min(100, u/h.quartos_dia*100) : 0; const cls = pc>=100?'full':pc>=80?'mid':'';
         return `<div class="occ-row"><span class="mono"><b>${esc(x.b.codigo)}</b></span><div class="meter"><i class="${cls}" style="width:${pc}%"></i></div><span class="mono">${u}/${h.quartos_dia}${pc>=100?' ●':''}</span><span class="nm">${esc(h.nome)} · ${esc(h.tipo==='primario'?t('ht.primario'):t('ht.secundario'))}</span></div>`; }).join('')).join('')}</div></div>
-    <div class="card tl"><div class="tl-tools"><input id="h-busca" type="search" placeholder="${esc(t('hoje.busca'))}" value="${esc(S.busca)}"></div>
+    <div class="card tl"><div class="tl-tools"><input id="h-busca" type="search" placeholder="${esc(t('hoje.busca'))}" value="${esc(S.busca)}" aria-label="${esc(t('hoje.busca'))}">
+      <select id="h-base" aria-label="${esc(t('col.base'))}"><option value="">${esc(t('hoje.todas_bases'))}</option>${S.bases.map(b=>`<option value="${esc(b.codigo)}" ${S.base===b.codigo?'selected':''}>${esc(b.codigo)} · ${esc(b.cidade)}</option>`).join('')}</select>
+      <span class="conta">${esc(t('hoje.mostrando',{n:linhas.length,total:S.pern.length}))}</span></div>
       <div class="tl-scroll"><table><thead><tr><th>${esc(t('col.situacao'))}</th><th>${esc(t('col.trip'))}</th><th>${esc(t('col.voos'))}</th><th>${esc(t('col.base'))}</th><th>${esc(t('col.hotel'))}</th><th>${esc(t('col.quartos'))}</th>
         <th style="min-width:320px"><div class="axis-h">${ticks.map(h=>`<span style="left:${(h-AX_INI)/(AX_FIM-AX_INI)*100}%">${String(h%24).padStart(2,'0')}h</span>`).join('')}</div></th></tr></thead>
       <tbody>${linhas.map(p=>{ const h = hotelPor(p.hotel_id); const l = Math.max(0, posHora(p.chegada)), r = Math.min(100, posHora(p.saida));
@@ -195,6 +199,7 @@ function renderHoje(){
       ${linhas.length?'':`<div class="empty">${esc(t('hoje.vazio'))}</div>`}</div></div>`;
   $$('[data-f]', v).forEach(b=> b.addEventListener('click', ()=>{ S.filtro = b.dataset.f; renderHoje(); }));
   const bs = $('#h-busca'); bs.addEventListener('input', ()=>{ S.busca = bs.value; const pos = bs.selectionStart; renderHoje(); const n = $('#h-busca'); n.focus(); n.setSelectionRange(pos,pos); });
+  $('#h-base').addEventListener('change', e=>{ S.base = e.target.value; renderHoje(); });
   $$('tbody tr', v).forEach(tr=> tr.addEventListener('click', ()=> modalPernoite(S.pern.find(p=>p.id===tr.dataset.id))));
   $('#h-novo').addEventListener('click', ()=> modalNovo());
   $('#h-auto').addEventListener('click', alocarPendentes);
@@ -362,7 +367,8 @@ function modalBase(){
 /* ---------- SUGESTÕES ---------- */
 async function renderSugestoes(){
   const v = $('#view-sugestoes');
-  v.innerHTML = `<div class="head"><div><h2>${esc(t('sg.titulo'))}</h2><p>${esc(t('sg.sub'))}</p></div></div><div id="sg-lista" class="muted">${esc(t('gen.carregando'))}</div>`;
+  v.innerHTML = `<div class="head"><div><h2>${esc(t('sg.titulo'))}</h2><p>${esc(t('sg.sub'))}</p></div></div>${ehAdmin()?'<div id="sg-val"></div>':''}<div id="sg-lista" class="muted">${esc(t('gen.carregando'))}</div>`;
+  if(ehAdmin()) renderValidacao($('#sg-val'));
   const { data, error } = await sb.from('prn_sugestoes').select('*').order('criado_em', {ascending:false}).limit(200);
   if(S.view!=='sugestoes') return;
   const box = $('#sg-lista'); if(error){ box.textContent = t('gen.erro',{m:error.message}); return; }
@@ -389,13 +395,23 @@ async function renderSugestoes(){
 }
 window.SL_renderSugestoes = ()=>{ if(S.view==='sugestoes') renderSugestoes(); };
 
+// validação do fluxo (admin): o que cada pessoa marcou em "Entendemos certo?"
+async function renderValidacao(alvo){
+  const { data } = await sb.from('prn_validacao').select('*').order('criado_em');
+  const lista = data || []; const pessoas = [...new Set(lista.map(r=>r.email))];
+  const ico = { certo:'<span class="pill s-confirmado">✓</span>', parcial:'<span class="pill s-a_reconfirmar">≈</span>', errado:'<span class="pill s-a_alocar">✕</span>' };
+  alvo.innerHTML = `<div class="card" style="padding:14px 16px;display:grid;gap:10px"><div><b>${esc(t('sg.val.titulo'))}</b><div class="sub">${esc(t('sg.val.sub'))}</div></div>
+    ${!lista.length ? `<div class="muted">${esc(t('sg.val.vazio'))}</div>` : `<div class="tl-scroll"><table class="val-tab"><thead><tr><th>#</th><th></th>${pessoas.map(p=>`<th>${esc(p)}</th>`).join('')}</tr></thead><tbody>
+      ${(window.SL_PERGUNTAS||[]).map((q,i)=>`<tr><td class="mono">${i+1}</td><td style="min-width:260px">${esc(t('val.'+q))}</td>${pessoas.map(p=>{ const r = lista.find(x=>x.email===p && x.pergunta===q); return `<td style="min-width:180px">${r?ico[r.resposta]+(r.comentario?`<div class="sub" style="margin-top:4px">${esc(r.comentario)}</div>`:''):'<span class="muted">—</span>'}</td>`; }).join('')}</tr>`).join('')}</tbody></table></div>`}</div>`;
+}
+
 /* ---------- EQUIPE ---------- */
 async function renderEquipe(){
   const v = $('#view-equipe');
   const { data } = await sb.from('prn_membros').select('*').order('criado_em');
   S.membros = data || [];
   v.innerHTML = `<div class="head"><div><h2>${esc(t('eq.titulo'))}</h2><p>${esc(t('eq.sub'))}</p></div></div>
-    <div class="card" style="padding:14px 16px"><div class="form" style="grid-template-columns:2fr 2fr 1fr auto;align-items:end">
+    <div class="card" style="padding:14px 16px"><div class="form eq-form">
       <label class="fld"><span>${esc(t('eq.email'))}</span><input id="m-email" type="email"></label><label class="fld"><span>${esc(t('eq.nome'))}</span><input id="m-nome"></label>
       <label class="fld"><span>${esc(t('eq.papel'))}</span><select id="m-papel">${['operacao','leitura','admin'].map(p=>`<option value="${p}">${esc(t('pap.'+p))}</option>`).join('')}</select></label>
       <button class="btn pri" id="m-add" type="button">${esc(t('eq.incluir'))}</button></div></div>
@@ -430,13 +446,16 @@ async function novidadesIniciar(){
   if(lsGet(novChave(), '') !== lista[0].id && !$('#nov-faixa')){
     const f = document.createElement('div'); f.id = 'nov-faixa'; f.setAttribute('role','status');
     f.innerHTML = `<span>✨ <b data-i18n="nov.faixa">${esc(t('nov.faixa'))}</b></span><button class="btn pri" type="button" id="nov-ver" data-i18n="nov.ver">${esc(t('nov.ver'))}</button><button class="btn" type="button" id="nov-x" aria-label="${esc(t('pn.fechar'))}">✕</button>`;
+    if($('#tour')) f.hidden = true;                                   // a apresentação vem primeiro; a faixa volta quando ela fecha
     document.body.appendChild(f); $('#nov-ver').addEventListener('click', novidadesAbrir); $('#nov-x').addEventListener('click', ()=> f.remove());
     $('#btn-nov').classList.add('novo');
   }
 }
 
 /* ---------- partida ---------- */
-window.SL = { sb, t, get lang(){ return S.lang; }, get email(){ return S.email; }, get nome(){ return (S.membro&&S.membro.nome) || S.email.split('@')[0]; }, view:()=>S.view };
+window.SL = { sb, t, get lang(){ return S.lang; }, get email(){ return S.email; }, get nome(){ return (S.membro&&S.membro.nome) || S.email.split('@')[0]; }, view:()=>S.view, irPara };
+$('#btn-tour').addEventListener('click', ()=> window.SL_tourAbrir && window.SL_tourAbrir());
+$('#btn-valid').addEventListener('click', ()=> window.SL_validarAbrir && window.SL_validarAbrir());
 S.lang = lsGet('sl_idioma', (navigator.language||'pt').toLowerCase().startsWith('pt') ? 'pt' : 'en');
 aplicarIdioma();
 sb.auth.getSession().then(({data})=>{ if(!data.session) telaLogin(); });
