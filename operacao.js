@@ -104,7 +104,7 @@ window.SL_renderOperacao = function(){
 
   v.innerHTML = `
     <div class="head"><div><h2>${esc(t('op.titulo'))} ${exemplo?`<span class="tag amber">${esc(t('hoje.exemplo'))}</span>`:''}</h2><p>${esc(t('op.sub'))}</p></div>
-      <div class="acts"><button class="btn" id="op-contratos" type="button">${esc(t('op.contratos'))}</button><button class="btn" id="h-imp" type="button">${esc(t('hoje.importar'))}</button><button class="btn" id="h-auto" type="button">${esc(t('hoje.auto'))}</button><button class="btn pri" id="h-novo" type="button">+ ${esc(t('hoje.novo'))}</button></div></div>
+      <div class="acts"><button class="btn${S.demo?' demo-on':''}" id="op-demo" type="button" aria-pressed="${S.demo}" title="${esc(t(S.demo?'op.demo_faixa':'op.demo_d'))}">${S.demo?'●':'○'} ${esc(t('op.demo'))}</button><button class="btn" id="op-contratos" type="button">${esc(t('op.contratos'))}</button><button class="btn" id="h-imp" type="button">${esc(t('hoje.importar'))}</button><button class="btn" id="h-auto" type="button">${esc(t('hoje.auto'))}</button><button class="btn pri" id="h-novo" type="button">+ ${esc(t('hoje.novo'))}</button></div></div>
     <div class="op-tools card">
       <div class="op-per" id="op-periodo"><input type="date" id="op-ini" value="${S.ini}" aria-label="${esc(t('op.de'))}"><span class="muted">${esc(t('op.ate'))}</span><input type="date" id="op-fim" value="${S.fim}" aria-label="${esc(t('op.ate'))}"><span class="sub">${esc(t('op.noites',{n:nDias()-1}))}</span><button class="btn" type="button" id="op-hoje">${esc(t('op.hoje'))}</button></div>
       <select id="h-base" aria-label="${esc(t('col.base'))}"><option value="">${esc(t('hoje.todas_bases'))}</option>${S.bases.map(b=>`<option value="${esc(b.codigo)}" ${S.base===b.codigo?'selected':''}>${esc(b.codigo)} · ${esc(b.cidade)}</option>`).join('')}</select>
@@ -146,6 +146,7 @@ function ligar(v, antes){
   $('#op-ini').addEventListener('change', e=> e.target.value && periodo(e.target.value, S.fim < e.target.value ? e.target.value : S.fim));
   $('#op-fim').addEventListener('change', e=> e.target.value && periodo(S.ini, e.target.value));
   $('#op-contratos').addEventListener('click', ()=> X.irPara('hoteis'));
+  $('#op-demo').addEventListener('click', async ()=>{ S.demo = !S.demo; X.lsSet('sl_demo', S.demo ? '1' : '0'); await X.carregarNoite(); X.render(); });
   $('#h-novo').addEventListener('click', ()=> X.modalNovo());
   $('#h-auto').addEventListener('click', X.alocarPendentes);
   $('#h-imp').addEventListener('click', X.modalImportar);

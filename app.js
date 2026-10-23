@@ -136,7 +136,9 @@ async function carregarNoite(){
   const ini = diaLocal(S.ini, 6), fim = diaLocal(S.fim, 30);
   const PAG = 1000; let pag = 0, todos = [];
   while(true){
-    const { data, error } = await sb.from('prn_pernoites').select('*').gte('chegada', ini.toISOString()).lt('chegada', fim.toISOString()).order('chegada').range(pag*PAG, pag*PAG+PAG-1);
+    let qy = sb.from('prn_pernoites').select('*').gte('chegada', ini.toISOString()).lt('chegada', fim.toISOString());
+    if(!S.demo) qy = qy.eq('exemplo', false);   // pernoites simulados só aparecem com o botão Demonstração ligado
+    const { data, error } = await qy.order('chegada').range(pag*PAG, pag*PAG+PAG-1);
     if(error){ showToast(t('gen.erro', {m:error.message})); S.pern = []; return; }
     todos = todos.concat(data || []); if(!data || data.length < PAG) break; pag++;
   }
@@ -490,6 +492,7 @@ window.SLX = { S, sb, t, esc, $, $$, fHora, fDiaHora, fData, fMoeda, hojeISO, so
 window.SL = { sb, t, get lang(){ return S.lang; }, get email(){ return S.email; }, get nome(){ return (S.membro&&S.membro.nome) || S.email.split('@')[0]; }, view:()=>S.view, irPara };
 $('#btn-tour').addEventListener('click', ()=> window.SL_tourAbrir && window.SL_tourAbrir());
 $('#btn-valid').addEventListener('click', ()=> window.SL_validarAbrir && window.SL_validarAbrir());
+S.demo = lsGet('sl_demo', '0') === '1';
 S.lang = lsGet('sl_idioma', (navigator.language||'pt').toLowerCase().startsWith('pt') ? 'pt' : 'en');
 aplicarIdioma();
 sb.auth.getSession().then(({data})=>{ if(!data.session) telaLogin(); });
