@@ -25,7 +25,7 @@ const loc = ()=> S.lang==='pt' ? 'pt-BR' : 'en-US';
 const fHora = d => new Date(d).toLocaleTimeString(loc(), {hour:'2-digit', minute:'2-digit'});
 const fDiaHora = d => new Date(d).toLocaleString(loc(), {day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'});
 const fData = d => new Date(d).toLocaleDateString(loc(), {day:'2-digit', month:'short', year:'numeric'});
-const fMoeda = v => v==null ? '–' : Number(v).toLocaleString(loc(), {style:'currency', currency:'BRL'});
+const fMoeda = (v, moeda) => v==null ? '–' : Number(v).toLocaleString(loc(), {style:'currency', currency:moeda||'BRL'});   // hotéis do exterior cobram em USD/EUR
 function paraInput(d){ const x = new Date(d); x.setMinutes(x.getMinutes()-x.getTimezoneOffset()); return x.toISOString().slice(0,16); }
 let toastTimer = null;
 const showToast = msg => window.showToast(msg);   // passa pelo acompanhante, que anota avisos de erro
@@ -142,7 +142,9 @@ async function carregarNoite(){
   }
   S.pern = todos;
 }
-function noiteDe(p){ const d = new Date(new Date(p.chegada).getTime() - 6*3600000); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+// a noite fica guardada no próprio pernoite (com ~6 mil pernoites na tela, recalcular a data a cada célula pesava)
+function noiteDe(p){ if(p._c === p.chegada) return p._n; const d = new Date(new Date(p.chegada).getTime() - 6*3600000);
+  p._c = p.chegada; return p._n = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 const hotelPor = id => S.hoteis.find(h=>h.id===id);
 function usados(hotelId, noite, exceto){ return S.pern.filter(p=>p.hotel_id===hotelId && p.situacao!=='cancelado' && p.id!==exceto && noiteDe(p)===noite).reduce((a,p)=>a+p.qtd, 0); }
 function opcoesHotel(p){
@@ -188,7 +190,7 @@ function modalPernoite(p){
     <div class="modal-b">
       <div class="kv"><div><small>${esc(t('pn.chegada'))}</small><b class="mono">${esc(p.voo_chegada||'–')}</b> · ${fDiaHora(p.chegada)}</div><div><small>${esc(t('pn.saida'))}</small><b class="mono">${esc(p.voo_saida||'–')}</b> · ${fDiaHora(p.saida)}</div><div><small>${esc(t('col.quartos'))}</small><b>${p.qtd}</b> · ${esc(t('pn.noites',{n:horas}))}</div></div>
       <div class="fld"><span>${esc(t('pn.hotel'))}${h?': <b>'+esc(h.nome)+'</b>':''}</span>
-        ${lista.length ? lista.map(o=>`<div class="hotel-opt ${o.h.id===sug?'sug':''}"><div><b>${esc(o.h.nome)}</b> <span class="tag">${esc(o.h.tipo==='primario'?t('ht.primario'):t('ht.secundario'))}</span>${o.h.id===sug?` <span class="tag amber">${esc(t('pn.sugerido'))}</span>`:''}<div class="sub">${fMoeda(o.h.tarifa)} · ${o.livres>=0?esc(t('pn.livres',{n:o.livres})):esc(t('pn.sem_vaga'))}</div></div>
+        ${lista.length ? lista.map(o=>`<div class="hotel-opt ${o.h.id===sug?'sug':''}"><div><b>${esc(o.h.nome)}</b> <span class="tag">${esc(o.h.tipo==='primario'?t('ht.primario'):t('ht.secundario'))}</span>${o.h.id===sug?` <span class="tag amber">${esc(t('pn.sugerido'))}</span>`:''}<div class="sub">${fMoeda(o.h.tarifa, o.h.moeda)} ·${o.livres>=0?esc(t('pn.livres',{n:o.livres})):esc(t('pn.sem_vaga'))}</div></div>
           <button type="button" class="btn ${o.h.id===sug&&p.hotel_id!==o.h.id?'pri':''}" data-alocar="${o.h.id}" ${p.hotel_id===o.h.id||p.situacao==='cancelado'?'disabled':''}>${esc(t('pn.alocar'))}</button></div>`).join('') : `<div class="muted">${esc(t('hoje.sem_hotel'))}</div>`}</div>
       <details><summary class="muted" style="cursor:pointer">${esc(t('gen.editar'))}</summary>
         <div class="form" style="margin-top:10px">
@@ -284,28 +286,82 @@ function modalImportar(){
 }
 
 /* ---------- HOTÉIS ---------- */
+// Duas abas: "Contratados" (os que entram na Operação, com quartos e diária) e "Cadastro geral" (todos os hotéis
+// cadastrados, mesmo sem negociação ativa — consulta, categoria e risco). O cadastro só é buscado quando a aba abre.
+const pillRisco = r => !r ? '' : `<span class="pill ${/bloq/i.test(r)?'s-cancelado':/revis/i.test(r)?'s-a_reconfirmar':'s-confirmado'}">${esc(/bloq/i.test(r)?t('cad.bloquear'):/revis/i.test(r)?t('cad.revisar'):t('cad.liberado'))}</span>`;
 function renderHoteis(){
-  const v = $('#view-hoteis');
+  const v = $('#view-hoteis'); S.htAba = S.htAba || 'contratados';
+  const bases = S.bases.filter(b=> b.ativo !== false);
   v.innerHTML = `<div class="head"><div><h2>${esc(t('ht.titulo'))}</h2><p>${esc(t('ht.sub'))}</p></div><div class="acts"><button class="btn" id="h-voltar" type="button">← ${esc(t('nav.operacao'))}</button><button class="btn" id="b-nova" type="button">+ ${esc(t('ht.nova_base'))}</button><button class="btn pri" id="h-nova" type="button">+ ${esc(t('ht.novo'))}</button></div></div>
-    <div class="grid-bases">${S.bases.map(b=>{ const hs = S.hoteis.filter(h=>h.base===b.codigo);
-      return `<div class="card base-card"><div class="base-h"><div><b>${esc(b.codigo)}</b> <span class="muted">${esc(b.cidade)}${b.uf?' · '+esc(b.uf):''}</span></div></div>
-        ${hs.length?`<div class="tl-scroll"><table><thead><tr><th>${esc(t('ht.nome'))}</th><th>${esc(t('ht.tipo'))}</th><th>${esc(t('ht.tarifa'))}</th><th>${esc(t('ht.quartos'))}</th><th>${esc(t('ht.hoje'))}</th></tr></thead><tbody>
-        ${hs.map(h=>{ const u = usados(h.id, hojeISO()), pc = h.quartos_dia? Math.min(100,u/h.quartos_dia*100):0; return `<tr data-h="${h.id}"><td><b>${esc(h.nome)}</b>${h.ativo?'':' <span class="tag">off</span>'}<div class="sub">${esc(h.servicos||'')}</div></td><td><span class="tag">${esc(h.tipo==='primario'?t('ht.primario'):t('ht.secundario'))}</span></td><td class="mono">${fMoeda(h.tarifa)}</td><td class="mono">${h.quartos_dia}</td><td><div style="display:flex;gap:8px;align-items:center"><div class="meter" style="width:70px"><i class="${pc>=100?'full':pc>=80?'mid':''}" style="width:${pc}%"></i></div><span class="mono">${u}/${h.quartos_dia}</span></div></td></tr>`; }).join('')}</tbody></table></div>`
-        :`<div class="empty">${esc(t('ht.sem'))}</div>`}</div>`; }).join('')}</div>`;
-  $$('tr[data-h]', v).forEach(tr=> tr.addEventListener('click', ()=> modalHotel(hotelPor(tr.dataset.h))));
+    <div class="chips ht-abas"><button type="button" class="chip ${S.htAba==='contratados'?'on':''}" data-aba="contratados">${esc(t('ht.aba_contr'))} <b>${S.hoteis.length}</b></button><button type="button" class="chip ${S.htAba==='cadastro'?'on':''}" data-aba="cadastro">${esc(t('ht.aba_cad'))}${S.cad?` <b>${S.cad.length}</b>`:''}</button></div>
+    <div id="ht-corpo"></div>`;
+  $$('[data-aba]', v).forEach(b=> b.addEventListener('click', ()=>{ S.htAba = b.dataset.aba; renderHoteis(); }));
   $('#h-nova').addEventListener('click', ()=> modalHotel(null));
   $('#b-nova').addEventListener('click', modalBase);
   $('#h-voltar').addEventListener('click', ()=> irPara('operacao'));
+  const corpo = $('#ht-corpo', v);
+  if(S.htAba === 'cadastro'){ renderCadastro(corpo); return; }
+  const fonte = (S.hoteis.find(h=>h.fonte)||{}).fonte;
+  corpo.innerHTML = (fonte?`<p class="sub" style="margin:0 0 10px">${esc(t('ht.fonte',{f:fonte}))}</p>`:'') + `<div class="grid-bases">${bases.map(b=>{ const hs = S.hoteis.filter(h=>h.base===b.codigo); if(!hs.length) return '';
+      return `<div class="card base-card"><div class="base-h"><div><b>${esc(b.codigo)}</b> <span class="muted">${esc(b.cidade)}${b.uf?' · '+esc(b.uf):''}</span></div></div>
+        <div class="tl-scroll"><table><thead><tr><th>${esc(t('ht.nome'))}</th><th>${esc(t('ht.single'))}</th><th>${esc(t('ht.duplo'))}</th><th>${esc(t('ht.quartos'))}</th><th title="${esc(t('ht.duracao_d'))}">${esc(t('ht.duracao'))}</th><th>${esc(t('ht.translado'))}</th><th>${esc(t('ht.hoje'))}</th></tr></thead><tbody>
+        ${hs.map(h=>{ const u = usados(h.id, hojeISO()), pc = h.quartos_dia? Math.min(100,u/h.quartos_dia*100):0; return `<tr data-h="${h.id}"><td><b>${esc(h.nome)}</b>${h.ativo?'':' <span class="tag">off</span>'}${h.aviso?` <span class="tag amber">⚠ ${esc(h.aviso)}</span>`:''}<div class="sub">${esc([h.categoria, h.rede && !/independente/i.test(h.rede) ? h.rede : '', h.servicos].filter(Boolean).join(' · '))}</div></td><td class="mono">${fMoeda(h.tarifa, h.moeda)}</td><td class="mono">${fMoeda(h.tarifa_duplo, h.moeda)}</td><td class="mono">${h.quartos_dia}</td><td class="mono">${h.duracao_h?h.duracao_h+'h':'–'}</td><td class="mono">${h.minutos_local!=null?h.minutos_local+' min':'–'}</td><td><div style="display:flex;gap:8px;align-items:center"><div class="meter" style="width:60px"><i class="${pc>=100?'full':pc>=80?'mid':''}" style="width:${pc}%"></i></div><span class="mono">${u}/${h.quartos_dia}</span></div></td></tr>`; }).join('')}</tbody></table></div></div>`; }).join('')}</div>`;
+  $$('tr[data-h]', corpo).forEach(tr=> tr.addEventListener('click', ()=> window.SL_fichaHotel ? window.SL_fichaHotel(tr.dataset.h) : modalHotel(hotelPor(tr.dataset.h))));
+}
+async function renderCadastro(corpo){
+  if(!S.cad){ corpo.innerHTML = `<div class="empty">${esc(t('gen.carregando'))}</div>`; let pag = 0, todos = [];
+    while(true){ const { data, error } = await sb.from('prn_cadastro_hoteis').select('*').order('aeroporto').order('nome').range(pag*1000, pag*1000+999);
+      if(error){ corpo.innerHTML = `<div class="empty">${esc(t('gen.erro',{m:error.message}))}</div>`; return; }
+      todos = todos.concat(data||[]); if(!data || data.length < 1000) break; pag++; }
+    S.cad = todos; if(S.htAba==='cadastro') renderHoteis(); return; }
+  const F = S.cadF = S.cadF || { q:'', pref:'', cat:'', risco:'', sem:false };
+  const opts = (vals, sel, todos) => `<option value="">${esc(todos)}</option>` + vals.map(x=>`<option value="${esc(x)}" ${x===sel?'selected':''}>${esc(x)}</option>`).join('');
+  const uniq = k => [...new Set(S.cad.map(c=>c[k]).filter(Boolean))].sort();
+  const sem = s => String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();
+  const lista = S.cad.filter(c=> (!F.pref || (c.preferencias||[c.preferencia]).includes(F.pref)) && (!F.cat || c.categoria===F.cat) && (!F.sem || !c.contratado)
+    && (!F.risco || (F.risco==='atencao' ? !/sem ind/i.test(c.risco||'') : c.risco===F.risco))
+    && (!F.q || sem([c.nome,c.aeroporto,c.cidade,c.rede,c.contrato_num].join(' ')).includes(sem(F.q))));
+  const atencao = S.cad.filter(c=>!/sem ind/i.test(c.risco||'')).length;
+  corpo.innerHTML = `<div class="card" style="padding:12px 14px;margin-bottom:12px"><div class="toolbar" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <input id="cf-q" type="search" placeholder="${esc(t('cad.busca'))}" value="${esc(F.q)}" style="flex:1 1 220px">
+      <select id="cf-pref">${opts(uniq('preferencia'), F.pref, t('cad.todas_pref'))}</select>
+      <select id="cf-cat">${opts(uniq('categoria'), F.cat, t('cad.todas_cat'))}</select>
+      <select id="cf-risco"><option value="">${esc(t('cad.todo_risco'))}</option><option value="atencao" ${F.risco==='atencao'?'selected':''}>${esc(t('cad.atencao',{n:atencao}))}</option></select>
+      <label class="muted" style="display:flex;gap:6px;align-items:center"><input id="cf-sem" type="checkbox" ${F.sem?'checked':''}> ${esc(t('cad.so_sem'))}</label>
+      <span class="muted mono">${esc(t('cad.n',{n:lista.length, t:S.cad.length}))}</span></div></div>
+    <div class="card tl-scroll"><table><thead><tr><th>${esc(t('cad.aero'))}</th><th>${esc(t('ht.nome'))}</th><th>${esc(t('cad.cidade'))}</th><th>${esc(t('cad.pref'))}</th><th>${esc(t('cad.cat'))}</th><th>${esc(t('cad.rede'))}</th><th>${esc(t('cad.risco'))}</th></tr></thead><tbody>
+      ${lista.slice(0, 400).map(c=>`<tr data-cad="${esc(c.contrato_num)}"><td class="mono">${esc(c.aeroporto)}</td><td><b>${esc(c.nome)}</b>${c.contratado?` <span class="tag accent">${esc(t('cad.contratado'))}</span>`:''}<div class="sub mono">#${esc(c.contrato_num)}</div></td><td>${esc(c.cidade||'')}${c.uf?' · '+esc(c.uf):''}</td><td>${esc((c.preferencias||[c.preferencia]).join(', '))}</td><td>${esc(c.categoria||'')}</td><td class="sub">${esc(c.rede||'')}</td><td>${pillRisco(c.risco)}</td></tr>`).join('')
+        || `<tr><td colspan="7" class="muted">${esc(t('cad.nada'))}</td></tr>`}</tbody></table>
+      ${lista.length > 400 ? `<div class="sub" style="padding:10px">${esc(t('cad.mais',{n:lista.length-400}))}</div>` : ''}</div>`;
+  const re = ()=>{ renderCadastro(corpo); };
+  const q = $('#cf-q', corpo); q.addEventListener('input', ()=>{ F.q = q.value; clearTimeout(S.cadT); S.cadT = setTimeout(()=>{ re(); const n = $('#cf-q'); if(n){ n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }, 250); });
+  $('#cf-pref', corpo).addEventListener('change', e=>{ F.pref = e.target.value; re(); });
+  $('#cf-cat', corpo).addEventListener('change', e=>{ F.cat = e.target.value; re(); });
+  $('#cf-risco', corpo).addEventListener('change', e=>{ F.risco = e.target.value; re(); });
+  $('#cf-sem', corpo).addEventListener('change', e=>{ F.sem = e.target.checked; re(); });
+  $$('tr[data-cad]', corpo).forEach(tr=> tr.addEventListener('click', ()=>{ const c = S.cad.find(x=>x.contrato_num===tr.dataset.cad); if(!c) return;
+    abrirModal(`<div class="modal-h"><div><h3>${esc(c.nome)}</h3><div class="sub"><span class="mono">${esc(c.aeroporto)} · #${esc(c.contrato_num)}</span> · ${esc(c.cidade||'')}${c.uf?' · '+esc(c.uf):''}</div></div><button class="x" data-close aria-label="${esc(t('pn.fechar'))}">✕</button></div>
+      <div class="modal-b"><div class="kv"><div><small>${esc(t('cad.pref'))}</small><b>${esc((c.preferencias||[c.preferencia]).join(', '))}</b></div><div><small>${esc(t('cad.cat'))}</small><b>${esc(c.categoria||'—')}${c.confianca?` <span class="muted">(${esc(c.confianca)})</span>`:''}</b></div><div><small>${esc(t('cad.rede'))}</small><b>${esc(c.rede||'—')}</b></div>
+        <div><small>${esc(t('cad.risco'))}</small><b>${pillRisco(c.risco)} ${esc(c.criterio_risco && !/aplic/i.test(c.criterio_risco) ? c.criterio_risco : '')}</b></div><div><small>${esc(t('cad.acao'))}</small><b>${esc(c.acao||'—')}</b></div><div><small>${esc(t('cad.contratado'))}</small><b>${c.contratado?'✓':'—'}</b></div></div>
+        ${c.justificativa?`<div class="fld"><span>${esc(t('cad.justificativa'))}</span><div class="sub">${esc(c.justificativa)}</div></div>`:''}
+        ${c.fonte && /^https?:\/\//.test(c.fonte)?`<div class="fld"><span>${esc(t('cad.fonte'))}</span><a href="${esc(c.fonte)}" target="_blank" rel="noopener noreferrer" class="sub">${esc(c.fonte)}</a></div>`:''}</div>
+      <div class="modal-f"><button class="btn" data-close type="button">${esc(t('pn.fechar'))}</button></div>`);
+  }));
 }
 function modalHotel(h){
-  if(!guard()) return; const n = h || { base:(S.bases[0]||{}).codigo, tipo:'primario', comissao_pct:10, quartos_dia:10, ativo:true };
+  if(!guard()) return; const n = h || { base:(S.bases[0]||{}).codigo, tipo:'primario', comissao_pct:10, quartos_dia:10, ativo:true, moeda:'BRL' };
   abrirModal(`<div class="modal-h"><h3>${esc(h?h.nome:t('ht.novo'))}</h3><button class="x" data-close aria-label="${esc(t('pn.fechar'))}">✕</button></div>
     <div class="modal-b"><div class="form">
       <label class="fld"><span>${esc(t('pn.base'))}</span><select id="o-base">${S.bases.map(b=>`<option value="${esc(b.codigo)}" ${b.codigo===n.base?'selected':''}>${esc(b.codigo)} · ${esc(b.cidade)}</option>`).join('')}</select></label>
       <label class="fld"><span>${esc(t('ht.tipo'))}</span><select id="o-tipo"><option value="primario" ${n.tipo==='primario'?'selected':''}>${esc(t('ht.primario'))}</option><option value="secundario" ${n.tipo==='secundario'?'selected':''}>${esc(t('ht.secundario'))}</option></select></label>
       <label class="fld full"><span>${esc(t('ht.nome'))}</span><input id="o-nome" value="${esc(n.nome||'')}"></label>
+      <label class="fld"><span>${esc(t('ht.moeda'))}</span><select id="o-moe">${['BRL','USD','EUR'].map(m=>`<option ${m===(n.moeda||'BRL')?'selected':''}>${m}</option>`).join('')}</select></label>
       <label class="fld"><span>${esc(t('ht.tarifa'))}</span><input id="o-tar" type="number" step="0.01" value="${n.tarifa??''}"></label>
+      <label class="fld"><span>${esc(t('ht.duplo'))}</span><input id="o-dup" type="number" step="0.01" value="${n.tarifa_duplo??''}"></label>
       <label class="fld"><span>${esc(t('ht.quartos'))}</span><input id="o-q" type="number" min="0" value="${n.quartos_dia??0}"></label>
+      <label class="fld"><span title="${esc(t('ht.duracao_d'))}">${esc(t('ht.duracao'))} (h)</span><input id="o-dur" type="number" min="0" value="${n.duracao_h??''}"></label>
+      <label class="fld"><span>${esc(t('ht.translado'))} (min)</span><input id="o-min" type="number" min="0" value="${n.minutos_local??''}"></label>
+      <label class="fld"><span>${esc(t('ht.release'))}</span><input id="o-rel" placeholder="00:20" value="${esc(n.release||'')}"></label>
       <label class="fld"><span>${esc(t('ht.comissao'))}</span><input id="o-com" type="number" step="0.5" value="${n.comissao_pct??10}"></label>
       <label class="fld"><span>${esc(t('ht.ativo'))}</span><select id="o-at"><option value="1" ${n.ativo?'selected':''}>✓</option><option value="0" ${n.ativo?'':'selected'}>—</option></select></label>
       <label class="fld full"><span>${esc(t('ht.servicos'))}</span><input id="o-serv" value="${esc(n.servicos||'')}"></label>
@@ -314,6 +370,8 @@ function modalHotel(h){
     <div class="modal-f"><button class="btn" data-close type="button">${esc(t('gen.cancelar'))}</button><button class="btn pri" id="o-ok" type="button">${esc(t('gen.salvar'))}</button></div>`, bg=>{
     $('#o-ok', bg).addEventListener('click', async ()=>{
       const reg = { base:$('#o-base',bg).value, tipo:$('#o-tipo',bg).value, nome:$('#o-nome',bg).value.trim(), tarifa:$('#o-tar',bg).value===''?null:+$('#o-tar',bg).value, quartos_dia:+$('#o-q',bg).value||0,
+        moeda:$('#o-moe',bg).value, tarifa_duplo:$('#o-dup',bg).value===''?null:+$('#o-dup',bg).value, duracao_h:$('#o-dur',bg).value===''?null:+$('#o-dur',bg).value,
+        minutos_local:$('#o-min',bg).value===''?null:+$('#o-min',bg).value, release:$('#o-rel',bg).value.trim()||null,
         comissao_pct:+$('#o-com',bg).value||0, ativo:$('#o-at',bg).value==='1', servicos:$('#o-serv',bg).value.trim()||null, contato:$('#o-cont',bg).value.trim()||null, telefone:$('#o-tel',bg).value.trim()||null, atualizado_em:new Date().toISOString() };
       if(!reg.nome){ showToast(t('err.campos')); return; }
       const r = h ? await sb.from('prn_hoteis').update(reg).eq('id', h.id) : await sb.from('prn_hoteis').insert(reg);
