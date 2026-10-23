@@ -8,7 +8,7 @@
 'use strict';
 const X = window.SLX; if(!X) return;
 const { S, t, esc, $, $$ } = X;
-const PXH = 14, ZOOM = [0.5, 0.75, 1, 1.5, 2], ROW = 34, LANE = 22, CRIT_H = 48, MAX_NOITES = 31;   // janela crítica de 48h, igual ao Smart Escala
+const PXH = 14, ZOOM = [0.5, 0.75, 1, 1.5, 2], ROW = 30, LANE = 22, CRIT_H = 48, MAX_NOITES = 31;   // janela crítica de 48h, igual ao Smart Escala
 S.zoomIdx = S.zoomIdx ?? 2; S.frac = S.frac ?? 0.36; S.abertos = S.abertos || new Set(); S.recolhidas = S.recolhidas || new Set(); S.ordem = S.ordem || 'urgencia';
 let primeiraVez = true;
 const todosAbertos = ()=> S.hoteis.filter(h=>h.ativo).every(h=> S.abertos.has(h.id));
@@ -44,8 +44,9 @@ function bloco(p){
 function celulasOcupacao(usadoPorNoite, cap, hotelId){   // uma célula por noite, alinhada da chegada típica (16h) à saída típica (10h)
   return noitesDoPeriodo().map(n=>{ const u = usadoPorNoite(n); const pc = cap ? u/cap*100 : (u?100:0); const cls = pc>=100 ? 'full' : pc>=80 ? 'mid' : u ? 'ok' : 'zero';
     const l = xDe(X.diaLocal(n,16)), w = xDe(X.diaLocal(n,34)) - l;
-    const api = hotelId && S.disp[hotelId+'|'+n]; const alerta = api && api.quartos_livres < Math.max(0, cap-u) ? ' api-baixo' : '';
-    return `<div class="occ2 ${cls}${alerta}" data-occ="${hotelId||''}" data-noite="${n}" data-u="${u}" data-c="${cap}" style="left:${l}px;width:${w}px"><i style="width:${Math.min(100,pc)}%"></i><span>${u}/${cap}${api?` · <b>${api.quartos_livres}</b> API`:''}</span></div>`; }).join('');
+    const api = hotelId && S.disp[hotelId+'|'+n]; const alerta = api && api.quartos_livres < Math.min(cap-u, Math.ceil(cap*0.3)) ? ' api-baixo' : '';   // só avisa quando o hotel está apertado de verdade
+    const txt = api ? `<b>${api.quartos_livres}</b> ${esc(t('op.livres_curto'))}<em>${u ? u+'/' : ''}${cap}</em>` : `${u}/${cap}`;
+    return `<div class="occ2 ${cls}${alerta}" data-occ="${hotelId||''}" data-noite="${n}" data-u="${u}" data-c="${cap}" style="left:${l}px;width:${w}px"><i style="width:${Math.min(100,pc)}%"></i><span>${txt}</span></div>`; }).join('');
 }
 function cabecalho(contagem){
   const dw = 24*pxh(); const ds = dias();
@@ -82,6 +83,7 @@ window.SL_renderOperacao = function(){
     return { b, ps, total, crit: ps.some(p=> ms(p.chegada) <= agora + CRIT_H*3600000) }; });
   if(S.ordem==='az') linhasTop.sort((a,b)=> a.b.codigo.localeCompare(b.b.codigo));
   else linhasTop.sort((a,b)=> (b.crit-a.crit) || (b.ps.length-a.ps.length) || a.b.codigo.localeCompare(b.b.codigo));
+  linhasTop = linhasTop.filter(r=> r.ps.length);   // só bases com pernoite a alocar
   const htmlTop = linhasTop.map(r=>{ const lanes = faixas(r.ps); const h = Math.max(ROW, lanes*LANE+10);
     return `<div class="tlg-row" data-drop-base="${esc(r.b.codigo)}" style="height:${h}px"><div class="tlg-lab"><b class="mono">${esc(r.b.codigo)}</b> <span class="muted">${esc(r.b.cidade)}</span>${r.crit?' <span class="crit-tag">!</span>':''}<span class="cnt2 ml" title="${esc(t('op.badge.base',{a:r.ps.length,t:r.total}))}">${r.ps.length}/${r.total}</span></div>
       <div class="tlg-track" style="width:${W}px">${r.ps.map(bloco).join('')}</div></div>`; }).join('');
@@ -91,40 +93,43 @@ window.SL_renderOperacao = function(){
   const htmlBot = base.map(b=>{
     const hs = S.hoteis.filter(h=>h.base===b.codigo && h.ativo).sort((a,c)=> (a.tipo==='primario'?0:1)-(c.tipo==='primario'?0:1) || a.nome.localeCompare(c.nome));
     if(!hs.length) return '';
-    const fechada = S.recolhidas.has(b.codigo);
+    const unico = hs.length === 1;   // base com um hotel só vira uma linha (sem cabeçalho de grupo)
+    const fechada = !unico && S.recolhidas.has(b.codigo);
     const capBase = hs.reduce((a,h)=>a+h.quartos_dia,0);
-    const cab = `<div class="tlg-row grp" style="height:${ROW}px"><div class="tlg-lab"><button type="button" class="chev" data-grp="${esc(b.codigo)}" aria-expanded="${!fechada}" title="${esc(fechada?t('op.abrir_base'):t('op.fechar_base'))}">${fechada?'▸':'▾'}</button><b class="mono">${esc(b.codigo)}</b> <span class="muted">${esc(b.cidade)} · ${esc(t('op.hoteis.n',{n:hs.length}))}</span></div>
+    const cab = unico ? '' : `<div class="tlg-row grp" style="height:${ROW}px"><div class="tlg-lab"><button type="button" class="chev" data-grp="${esc(b.codigo)}" aria-expanded="${!fechada}" title="${esc(fechada?t('op.abrir_base'):t('op.fechar_base'))}">${fechada?'▸':'▾'}</button><b class="mono">${esc(b.codigo)}</b> <span class="muted">${esc(b.cidade)} · ${esc(t('op.hoteis.n',{n:hs.length}))}</span></div>
       <div class="tlg-track" style="width:${W}px">${celulasOcupacao(n=> hs.reduce((a,h)=>a+X.usados(h.id,n),0), capBase)}</div></div>`;
     if(fechada) return cab;
     return cab + hs.map(h=>{ const aberto = S.abertos.has(h.id) || (S.busca && vis.some(p=>p.hotel_id===h.id));
       const ps = vis.filter(p=>p.hotel_id===h.id); const lanes = aberto ? faixas(ps) : 1; const alt = aberto ? Math.max(ROW, lanes*LANE+10) : ROW;
-      return `<div class="tlg-row hot${aberto?' aberto':''}" data-drop-hotel="${h.id}" style="height:${alt}px"><div class="tlg-lab"><button type="button" class="chev" data-hot="${h.id}" aria-expanded="${aberto}" title="${esc(aberto?t('op.fechar_hotel'):t('op.abrir_hotel'))}">${aberto?'▾':'▸'}</button><span class="hn" data-ficha="${h.id}" title="${esc(t('op.ficha'))}">${esc(h.nome)}</span><span class="diaria mono">${esc(X.fMoeda(h.tarifa, h.moeda))}</span>${h.aviso?`<span class="tag amber" title="${esc(h.aviso)}">⚠</span>`:''}<span class="tp tp-${h.tipo}" title="${esc(h.tipo==='primario'?t('ht.primario'):t('ht.secundario'))}">${h.tipo==='primario'?'P':'S'}</span><button type="button" class="gear" data-cfg="${h.id}" title="${esc(t('op.contrato'))}" aria-label="${esc(t('op.contrato'))}">⚙</button></div>
+      return `<div class="tlg-row hot${unico?' unico':''}${aberto?' aberto':''}" data-drop-hotel="${h.id}" style="height:${alt}px"><div class="tlg-lab"><button type="button" class="chev" data-hot="${h.id}" aria-expanded="${aberto}" title="${esc(aberto?t('op.fechar_hotel'):t('op.abrir_hotel'))}">${aberto?'▾':'▸'}</button>${unico?`<b class="bc mono" title="${esc(b.cidade)}">${esc(b.codigo)}</b>`:''}<span class="hn" data-ficha="${h.id}" title="${esc(h.nome+' — '+t('op.ficha'))}">${esc(h.nome)}</span>${h.aviso?`<span class="avi" title="${esc(h.aviso)}">⚠</span>`:''}${h.tipo!=='primario'?`<span class="tp" title="${esc(t('ht.secundario'))}">S</span>`:''}<span class="diaria mono">${esc(X.fMoeda(h.tarifa, h.moeda))}</span></div>
         <div class="tlg-track" style="width:${W}px">${aberto ? ps.map(bloco).join('') : celulasOcupacao(n=>X.usados(h.id,n), h.quartos_dia, h.id)}</div></div>`; }).join('');
   }).join('');
 
+  const semPend = !pend.length;
   v.innerHTML = `
-    <div class="head"><div><h2>${esc(t('op.titulo'))} ${exemplo?`<span class="tag amber">${esc(t('hoje.exemplo'))}</span>`:''}</h2><p>${esc(t('op.sub'))}</p></div>
-      <div class="acts"><button class="btn${S.demo?' demo-on':''}" id="op-demo" type="button" aria-pressed="${S.demo}" title="${esc(t(S.demo?'op.demo_faixa':'op.demo_d'))}">${S.demo?'●':'○'} ${esc(t('op.demo'))}</button><button class="btn" id="op-contratos" type="button">${esc(t('op.contratos'))}</button><button class="btn" id="h-imp" type="button">${esc(t('hoje.importar'))}</button><button class="btn" id="h-auto" type="button">${esc(t('hoje.auto'))}</button><button class="btn pri" id="h-novo" type="button">+ ${esc(t('hoje.novo'))}</button></div></div>
-    <div class="op-tools card">
-      <div class="op-per" id="op-periodo"><input type="date" id="op-ini" value="${S.ini}" aria-label="${esc(t('op.de'))}"><span class="muted">${esc(t('op.ate'))}</span><input type="date" id="op-fim" value="${S.fim}" aria-label="${esc(t('op.ate'))}"><span class="sub">${esc(t('op.noites',{n:nDias()-1}))}</span><button class="btn" type="button" id="op-hoje">${esc(t('op.hoje'))}</button></div>
-      <select id="h-base" aria-label="${esc(t('col.base'))}"><option value="">${esc(t('hoje.todas_bases'))}</option>${S.bases.map(b=>`<option value="${esc(b.codigo)}" ${S.base===b.codigo?'selected':''}>${esc(b.codigo)} · ${esc(b.cidade)}</option>`).join('')}</select>
+    <div class="op-bar">
+      <div class="op-per" id="op-periodo"><input type="date" id="op-ini" value="${S.ini}" aria-label="${esc(t('op.de'))}"><span class="muted">–</span><input type="date" id="op-fim" value="${S.fim}" aria-label="${esc(t('op.ate'))}"><button class="btn sm" type="button" id="op-hoje">${esc(t('op.hoje'))}</button></div>
+      <select id="h-base" aria-label="${esc(t('col.base'))}"><option value="">${esc(t('hoje.todas_bases'))}</option>${S.bases.filter(b=>b.ativo!==false).map(b=>`<option value="${esc(b.codigo)}" ${S.base===b.codigo?'selected':''}>${esc(b.codigo)} · ${esc(b.cidade)}</option>`).join('')}</select>
       <input id="h-busca" type="search" placeholder="${esc(t('hoje.busca'))}" value="${esc(S.busca||'')}" aria-label="${esc(t('hoje.busca'))}">
-      <select id="op-ordem" aria-label="${esc(t('op.ordem.urgencia'))}"><option value="urgencia" ${S.ordem==='urgencia'?'selected':''}>${esc(t('op.ordem.urgencia'))}</option><option value="az" ${S.ordem==='az'?'selected':''}>${esc(t('op.ordem.az'))}</option></select>
+      <div class="chips op-cnt">${['todos','a_alocar','a_reconfirmar','alocado','confirmado'].map(k=>`<button type="button" class="chip k-${k}" data-f="${k}" aria-pressed="${S.filtro===k}" title="${esc(k==='todos'?t('chip.todos'):t('sit.'+k))}"><b>${cont[k]}</b><span>${esc(k==='todos'?t('chip.todos'):t('sit.'+k))}</span></button>`).join('')}</div>
+      <span class="grow"></span>
       <div class="zoom"><button type="button" id="op-zm" title="${esc(t('op.zoom.menos'))}" aria-label="${esc(t('op.zoom.menos'))}" ${S.zoomIdx===0?'disabled':''}>−</button><span class="mono">${Math.round(ZOOM[S.zoomIdx]*100)}%</span><button type="button" id="op-zp" title="${esc(t('op.zoom.mais'))}" aria-label="${esc(t('op.zoom.mais'))}" ${S.zoomIdx===ZOOM.length-1?'disabled':''}>+</button></div>
-      <button class="btn" type="button" id="op-exp">${esc(todosAbertos() ? t('op.recolher') : t('op.expandir'))}</button>
+      <button class="btn sm" type="button" id="op-exp" title="${esc(todosAbertos() ? t('op.recolher') : t('op.expandir'))}">${todosAbertos()?'▾':'▸'} ${esc(t('op.hoteis_curto'))}</button>
+      <button class="btn sm${S.demo?' demo-on':''}" id="op-demo" type="button" aria-pressed="${S.demo}" title="${esc(t(S.demo?'op.demo_faixa':'op.demo_d'))}">${S.demo?'●':'○'} ${esc(t('op.demo'))}</button>
+      <details class="op-mais"><summary class="btn sm" title="${esc(t('op.mais'))}" aria-label="${esc(t('op.mais'))}">⋯</summary><div class="op-menu card">
+        <button type="button" id="h-novo">+ ${esc(t('hoje.novo'))}</button><button type="button" id="op-contratos">${esc(t('op.contratos'))}</button><button type="button" id="h-imp">${esc(t('hoje.importar'))}</button><button type="button" id="h-auto">${esc(t('hoje.auto'))}</button><label class="op-ord"><select id="op-ordem"><option value="urgencia" ${S.ordem==='urgencia'?'selected':''}>${esc(t('op.ordem.urgencia'))}</option><option value="az" ${S.ordem==='az'?'selected':''}>${esc(t('op.ordem.az'))}</option></select></label></div></details>
     </div>
-    <div class="chips">${['todos','a_alocar','a_reconfirmar','alocado','confirmado','cancelado'].map(k=>`<button type="button" class="chip k-${k}" data-f="${k}" aria-pressed="${S.filtro===k}"><b>${cont[k]}</b><span>${esc(k==='todos'?t('chip.todos'):t('sit.'+k))}</span></button>`).join('')}</div>
     <div class="op-paineis card" id="op-paineis">
-      <div class="op-sec" id="op-sec-top" style="flex:0 0 ${S.frac*100}%"><div class="op-tit">⚠ ${esc(t('op.painel.abertos'))} <span class="sub">${esc(t('op.painel.n',{n:pend.length}))}</span><span class="leg"><i class="b2-a_alocar"></i>${esc(t('sit.a_alocar'))} <i class="b2-alocado"></i>${esc(t('sit.alocado'))} <i class="b2-a_reconfirmar"></i>${esc(t('sit.a_reconfirmar'))} <i class="b2-confirmado"></i>${esc(t('sit.confirmado'))}</span></div>
-        <div class="op-scroll" id="op-top"><div class="tlg" style="width:calc(var(--lab) + ${W}px)">${cabecalho(porDia)}<div class="tlg-body com-rotulos">${sobreposicao(true)}${htmlTop || `<div class="empty">${esc(t('op.vazio.top'))}</div>`}</div></div></div></div>
-      <div class="op-div" id="op-div" role="separator" aria-orientation="horizontal" title="${esc(t('op.divisor'))}"></div>
+      <div class="op-sec${semPend?' vazio':''}" id="op-sec-top" style="flex:${semPend?'0 0 auto':'0 0 '+(S.frac*100)+'%'}"><div class="op-tit">⚠ ${esc(t('op.painel.abertos'))} <span class="sub">${semPend ? '✓ '+esc(t('op.vazio.top')) : esc(t('op.painel.n',{n:pend.length}))}</span><span class="leg"><i class="b2-a_alocar"></i>${esc(t('sit.a_alocar'))} <i class="b2-alocado"></i>${esc(t('sit.alocado'))} <i class="b2-a_reconfirmar"></i>${esc(t('sit.a_reconfirmar'))} <i class="b2-confirmado"></i>${esc(t('sit.confirmado'))}</span></div>
+        <div class="op-scroll" id="op-top"${semPend?' hidden':''}><div class="tlg" style="width:calc(var(--lab) + ${W}px)">${cabecalho(porDia)}<div class="tlg-body com-rotulos">${sobreposicao(true)}${htmlTop || `<div class="empty">${esc(t('op.vazio.top'))}</div>`}</div></div></div></div>
+      <div class="op-div" id="op-div"${semPend?' hidden':''} role="separator" aria-orientation="horizontal" title="${esc(t('op.divisor'))}"></div>
       <div class="op-sec" style="flex:1 1 0"><div class="op-tit">${esc(t('op.painel.hoteis'))} <span class="sub">${esc(t('op.hoteis.n',{n:S.hoteis.filter(h=>h.ativo && (!S.base||h.base===S.base)).length}))}</span></div>
         <div class="op-scroll" id="op-bot"><div class="tlg" style="width:calc(var(--lab) + ${W}px)">${cabecalho(null)}<div class="tlg-body">${sobreposicao(false)}${htmlBot}</div></div></div></div>
     </div>`;
   ligar(v, antes);
 };
 
-function alturaPaineis(){ const el = $('#op-paineis'); if(!el) return; const top = el.getBoundingClientRect().top + scrollY; el.style.height = Math.max(440, innerHeight - (top - scrollY) - 14) + 'px'; }
+function alturaPaineis(){ const el = $('#op-paineis'); if(!el) return; const top = el.getBoundingClientRect().top + scrollY; el.style.height = Math.max(420, innerHeight - (top - scrollY) - 8) + 'px'; }
 window.addEventListener('resize', ()=>{ if(S.view==='operacao') alturaPaineis(); });
 
 function ligar(v, antes){
@@ -146,13 +151,13 @@ function ligar(v, antes){
   $('#op-ini').addEventListener('change', e=> e.target.value && periodo(e.target.value, S.fim < e.target.value ? e.target.value : S.fim));
   $('#op-fim').addEventListener('change', e=> e.target.value && periodo(S.ini, e.target.value));
   $('#op-contratos').addEventListener('click', ()=> X.irPara('hoteis'));
+  const mais = $('.op-mais', v); document.addEventListener('pointerdown', function fora(e){ if(!document.body.contains(mais)){ document.removeEventListener('pointerdown', fora); return; } if(mais.open && !mais.contains(e.target)) mais.open = false; });
   $('#op-demo').addEventListener('click', async ()=>{ S.demo = !S.demo; X.lsSet('sl_demo', S.demo ? '1' : '0'); await X.carregarNoite(); X.render(); });
   $('#h-novo').addEventListener('click', ()=> X.modalNovo());
   $('#h-auto').addEventListener('click', X.alocarPendentes);
   $('#h-imp').addEventListener('click', X.modalImportar);
   $$('[data-grp]', v).forEach(b=> b.addEventListener('click', ()=>{ const k = b.dataset.grp; S.recolhidas.has(k) ? S.recolhidas.delete(k) : S.recolhidas.add(k); X.render(); }));
   $$('[data-hot]', v).forEach(b=> b.addEventListener('click', ()=>{ const k = b.dataset.hot; S.abertos.has(k) ? S.abertos.delete(k) : S.abertos.add(k); X.render(); }));
-  $$('[data-cfg]', v).forEach(b=> b.addEventListener('click', ()=> X.modalHotel(X.hotelPor(b.dataset.cfg))));
   $$('[data-ficha]', v).forEach(b=> b.addEventListener('click', ()=> window.SL_fichaHotel(b.dataset.ficha)));
   $$('.blk', v).forEach(el=>{
     el.addEventListener('click', ()=> X.modalPernoite(S.pern.find(p=>p.id===el.dataset.p)));
@@ -198,16 +203,27 @@ async function desalocar(p){
 }
 
 const css = document.createElement('style'); css.textContent = `
-  :root{ --lab:300px; --day-line:color-mix(in srgb, var(--ink) 24%, transparent); --hour-line:color-mix(in srgb, var(--ink) 7%, transparent); }
-  .op-tools{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 12px}
-  .op-tools input,.op-tools select{border:1px solid var(--line-2);background:var(--panel);border-radius:8px;padding:6px 9px}
-  .op-tools #h-busca{min-width:200px;flex:1;max-width:300px}
+  :root{ --lab:320px; --day-line:color-mix(in srgb, var(--ink) 24%, transparent); --hour-line:color-mix(in srgb, var(--ink) 7%, transparent); }
+  .content:has(#view-operacao.active){max-width:none;padding:8px 12px 12px;gap:8px}
+  #view-operacao.active{gap:8px}
+  .op-bar{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+  .op-bar input,.op-bar select{border:1px solid var(--line-2);background:var(--panel);border-radius:7px;padding:3px 8px;font-size:12.5px;height:30px}
+  .op-bar #h-busca{flex:1 1 150px;min-width:150px;max-width:280px} .op-bar #h-base{max-width:160px} .op-bar .grow{flex:1 1 0}
+  .op-bar input[type=date]{width:128px;padding:3px 6px}
+  .btn.sm{padding:3px 10px;font-size:12.5px;height:30px;border-radius:7px}
+  .op-cnt{display:flex;gap:4px} .op-cnt .chip{display:flex;gap:5px;align-items:baseline;padding:4px 9px;border-radius:7px;box-shadow:none;height:30px}
+  .op-cnt .chip b{font-size:14px} .op-cnt .chip span{font-size:11.5px}
+  .op-mais{position:relative} .op-mais summary{list-style:none;cursor:pointer} .op-mais summary::-webkit-details-marker{display:none}
+  .op-menu{position:absolute;right:0;top:34px;z-index:60;display:grid;min-width:220px;padding:4px}
+  .op-menu > button{border:0;background:transparent;text-align:left;padding:8px 10px;border-radius:6px;font-size:13px} .op-menu > button:hover{background:var(--gray-soft)}
+  .op-ord{display:flex;gap:6px;align-items:center;padding:6px 10px;font-size:12.5px;color:var(--ink-2)} .op-ord select{border:1px solid var(--line-2);border-radius:6px;padding:3px 6px;background:var(--panel)}
+  .op-sec.vazio .op-tit .sub{color:var(--green)}
   .op-per{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
   .zoom{display:inline-flex;align-items:center;border:1px solid var(--line-2);border-radius:8px;overflow:hidden}
   .zoom button{border:0;background:var(--panel);padding:5px 10px;font-weight:700} .zoom button:disabled{opacity:.35} .zoom span{min-width:46px;text-align:center;font-size:12px}
   .op-paineis{display:flex;flex-direction:column;overflow:hidden;padding:0}
   .op-sec{display:flex;flex-direction:column;min-height:0;overflow:hidden}
-  .op-tit{display:flex;gap:10px;align-items:center;padding:6px 12px;font-size:11.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-2);background:var(--panel-2);border-bottom:1px solid var(--line)}
+  .op-tit{display:flex;gap:10px;align-items:center;padding:4px 12px;font-size:11.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-2);background:var(--panel-2);border-bottom:1px solid var(--line)}
   .op-tit .sub{text-transform:none;letter-spacing:0;font-weight:500}
   .op-tit .leg{margin-left:auto;display:flex;gap:6px;align-items:center;text-transform:none;letter-spacing:0;font-weight:500;color:var(--ink-3);flex-wrap:wrap}
   .op-tit .leg i{display:inline-block;width:12px;height:8px;border-radius:2px;margin-left:6px}
@@ -226,10 +242,12 @@ const css = document.createElement('style'); css.textContent = `
   .tlg-body{position:relative} .tlg-body.com-rotulos{padding-top:20px}
   .tlg-row{display:flex;border-bottom:1px solid var(--line);position:relative}
   .tlg-row.grp{background:var(--panel-2)} .tlg-row.grp .tlg-lab{background:var(--panel-2);font-weight:600}
-  .tlg-lab{position:sticky;left:0;z-index:12;width:var(--lab);flex:none;background:var(--panel);border-right:1px solid var(--line);display:flex;gap:6px;align-items:flex-start;padding:8px 8px 0;font-size:12.5px;overflow:hidden;white-space:nowrap}
+  .tlg-lab{position:sticky;left:0;z-index:12;width:var(--lab);flex:none;background:var(--panel);border-right:1px solid var(--line);display:flex;gap:6px;align-items:flex-start;padding:5px 8px 0;font-size:12.5px;overflow:hidden;white-space:nowrap}
   .tlg-lab > *{line-height:18px}
   .tlg-row.hot .tlg-lab{padding-left:22px}
-  .tlg-lab .hn{overflow:hidden;text-overflow:ellipsis;cursor:pointer;flex:1;min-width:0}
+  .tlg-lab .hn{overflow:hidden;text-overflow:ellipsis;cursor:pointer;flex:1;min-width:0;font-weight:500;color:var(--ink)}
+  .tlg-row.unico .tlg-lab{padding-left:8px} .tlg-lab .bc{flex:none;width:34px;font-size:11.5px;color:var(--ink-2)}
+  .tlg-lab .avi{flex:none;color:var(--amber);font-size:12px}
   .tp{flex:none;font-size:10px;font-weight:700;border-radius:4px;padding:0 5px;background:var(--gray-soft);color:var(--ink-2)} .tp-primario{background:var(--accent-soft);color:var(--accent)} .tlg-lab .hn:hover{text-decoration:underline}
   .chev,.gear{border:0;background:transparent;color:var(--ink-3);padding:2px 4px;border-radius:4px;flex:none} .chev:hover,.gear:hover{background:var(--gray-soft);color:var(--ink)}
   .tlg-track{position:relative;flex:none;
@@ -249,11 +267,13 @@ const css = document.createElement('style'); css.textContent = `
   .blk.b2-alocado{color:var(--ink);border:1px dashed var(--bar-ok)}
   .blk.crit{box-shadow:0 0 0 2px var(--panel),0 0 0 3.5px var(--red)}
   .crit-tag{background:var(--red);color:#fff;border-radius:4px;font-size:10px;font-weight:700;padding:0 5px}
-  .occ2{position:absolute;top:6px;height:22px;border-radius:5px;background:var(--gray-soft);overflow:hidden;cursor:pointer;z-index:4}
+  .occ2{position:absolute;top:5px;height:20px;border-radius:5px;background:var(--gray-soft);overflow:hidden;cursor:pointer;z-index:4}
   .occ2 i{position:absolute;left:0;top:0;bottom:0;background:var(--bar-done);opacity:.55} .occ2.mid i{background:var(--bar-warn)} .occ2.full i{background:var(--bar-new);opacity:.75} .occ2.zero{opacity:.6}
-  .occ2 span{position:relative;font-family:var(--fm);font-size:11px;font-weight:600;padding:0 6px;line-height:22px}
-  .tlg-row.grp .occ2{height:20px;top:7px}
-  @media (max-width:760px){ :root{ --lab:170px } .op-tit .leg{display:none} }`;
+  .occ2 span{position:relative;font-family:var(--fm);font-size:11px;font-weight:500;padding:0 6px;line-height:20px;color:var(--ink-2)}
+  .occ2 span b{color:var(--ink);font-weight:700} .occ2 span em{font-style:normal;color:var(--ink-3);margin-left:6px}
+  .tlg-row.grp .occ2{height:18px;top:6px}
+  @media (max-width:1800px){ .op-cnt .chip span{display:none} }
+  @media (max-width:760px){ :root{ --lab:170px } .op-tit .leg{display:none} .op-bar #h-busca{width:100%} .op-bar .grow{display:none} }`;
 document.head.appendChild(css);
 // largura do dia acompanha o zoom (fundo com as linhas de hora e de dia)
 const zcss = document.createElement('style'); document.head.appendChild(zcss);

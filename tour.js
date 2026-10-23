@@ -17,7 +17,7 @@ const PASSOS = [
   { alvo:'.chip.k-alocado', view:'operacao', k:'alocado' },
   { alvo:'.chip.k-a_reconfirmar', view:'operacao', k:'a_reconfirmar' },
   { alvo:'#op-bot', view:'operacao', k:'ocupacao' },
-  { alvo:'#op-top', view:'operacao', k:'linha' },
+  { alvo:'#op-sec-top', view:'operacao', k:'linha' },
   { alvo:'#h-auto', view:'operacao', k:'auto' },
   { alvo:'#h-imp', view:'operacao', k:'importar' },
   { alvo:'#op-contratos', view:'operacao', k:'hoteis' },
@@ -27,11 +27,12 @@ const PASSOS = [
 ];
 let passo = 0;
 function tourAbrir(){ passo = 0; const f = document.getElementById('nov-faixa'); if(f) f.hidden = true; desenhar(); }
-function tourFechar(){ const o = document.getElementById('tour'); if(o) o.remove(); window.removeEventListener('resize', reposicionar); window.removeEventListener('scroll', reposicionar, true); lsSet('sl_tour_visto:'+SL.email, '1');
+function tourFechar(){ const o = document.getElementById('tour'); if(o) o.remove(); const mais = document.querySelector('.op-mais'); if(mais) mais.open = false; window.removeEventListener('resize', reposicionar); window.removeEventListener('scroll', reposicionar, true); lsSet('sl_tour_visto:'+SL.email, '1');
   const f = document.getElementById('nov-faixa'); if(f) f.hidden = false; }
 function reposicionar(){ if(document.getElementById('tour')) desenhar(true); }
 function desenhar(soPosicao){
   const p = PASSOS[passo]; if(SL.view() !== p.view) SL.irPara(p.view);
+  const mais = document.querySelector('.op-mais'); if(mais && !soPosicao) mais.open = !!mais.querySelector(p.alvo);   // alguns botões moram no menu ⋯ da Operação
   const el = document.querySelector(p.alvo);
   let o = document.getElementById('tour');
   if(!o){ o = document.createElement('div'); o.id = 'tour'; o.innerHTML = '<div class="tour-luz"></div><div class="tour-card" role="dialog" aria-modal="true"></div>'; document.body.appendChild(o); window.addEventListener('resize', reposicionar); window.addEventListener('scroll', reposicionar, true); }
