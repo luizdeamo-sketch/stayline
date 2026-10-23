@@ -143,6 +143,12 @@ async function carregarNoite(){
     todos = todos.concat(data || []); if(!data || data.length < PAG) break; pag++;
   }
   S.pern = todos;
+  // com a Demonstração desligada, o Resumo ainda mostra os voos simulados (só voo, noite e base — marcados como exemplo)
+  S.voosEx = null;
+  if(!S.demo){ let pg = 0, ex = [];
+    while(true){ const { data, error } = await sb.from('prn_pernoites').select('voo_chegada,chegada,base,situacao').eq('exemplo', true).gte('chegada', ini.toISOString()).lt('chegada', fim.toISOString()).order('chegada').range(pg*PAG, pg*PAG+PAG-1);
+      if(error) break; ex = ex.concat(data || []); if(!data || data.length < PAG) break; pg++; }
+    S.voosEx = ex; }
 }
 // a noite fica guardada no próprio pernoite (com ~6 mil pernoites na tela, recalcular a data a cada célula pesava)
 function noiteDe(p){ if(p._c === p.chegada) return p._n; const d = new Date(new Date(p.chegada).getTime() - 6*3600000);

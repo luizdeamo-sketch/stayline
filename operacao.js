@@ -83,13 +83,14 @@ function sobreposicao(comRotulos){
 
 function resumo(hsBase, W){
   const ns = noitesDoPeriodo(), pc = (a,b)=> b ? Math.round(a/b*100)+'%' : '–';
-  const pernNoite = {}; S.pern.forEach(p=>{ if(S.base && p.base!==S.base) return; if(p.situacao==='cancelado') return; const n = X.noiteDe(p); (pernNoite[n] = pernNoite[n] || []).push(p); });
+  const fonteVoos = S.voosEx && !S.pern.some(p=>p.exemplo) ? S.voosEx : S.pern, voosExemplo = fonteVoos === S.voosEx || S.pern.some(p=>p.exemplo);
+  const pernNoite = {}; fonteVoos.forEach(p=>{ if(S.base && p.base!==S.base) return; if(p.situacao==='cancelado') return; const n = X.noiteDe(p); (pernNoite[n] = pernNoite[n] || []).push(p); });
   const voos = (n, pref)=> new Set((pernNoite[n]||[]).filter(p=> (p.voo_chegada||'').toUpperCase().startsWith(pref)).map(p=> p.voo_chegada)).size;
   const cap = n=> hsBase.reduce((a,h)=>a+h.quartos_dia,0), liv = n=> hsBase.reduce((a,h)=>a+livresDe(h,n),0);
   const nHot = (k, n)=> hsBase.filter(h=> FILTROS_RES[k](h, [n])).length;
   const linhas = [
-    { k:'gol', ico:'✈', rot:t('op.res.gol'), val:n=>{ const v = voos(n,'G3'); return v ? `<b>${v}</b>` : '·'; }, tot: ns.reduce((a,n)=>a+voos(n,'G3'),0)+' '+t('op.res.voos'), dica:t('op.res.gol_d') },
-    { k:'azul', ico:'✈', rot:t('op.res.azul'), val:n=>{ const v = voos(n,'AD'); return v ? `<b>${v}</b>` : '·'; }, tot: ns.reduce((a,n)=>a+voos(n,'AD'),0)+' '+t('op.res.voos'), dica:t('op.res.azul_d') },
+    { k:'gol', ico:'✈', rot:t('op.res.gol'), ex:voosExemplo, val:n=>{ const v = voos(n,'G3'); return v ? `<b>${v}</b>` : '·'; }, tot: ns.reduce((a,n)=>a+voos(n,'G3'),0)+' '+t('op.res.voos'), dica:t('op.res.gol_d') },
+    { k:'azul', ico:'✈', rot:t('op.res.azul'), ex:voosExemplo, val:n=>{ const v = voos(n,'AD'); return v ? `<b>${v}</b>` : '·'; }, tot: ns.reduce((a,n)=>a+voos(n,'AD'),0)+' '+t('op.res.voos'), dica:t('op.res.azul_d') },
     { k:null, ico:'▦', rot:t('op.res.contrato'), val:n=> `<b>${cap(n)}</b>`, tot:'', dica:t('op.res.contrato_d') },
     { k:'ocupados', ico:'●', rot:t('op.res.ocupados'), cls:'r-ocup', val:n=>{ const c = cap(n), o = c - liv(n); return `<b>${o}</b> <em>${pc(o,c)}</em>`; }, tot: t('op.res.n_hoteis',{n:hsBase.filter(h=>FILTROS_RES.ocupados(h,ns)).length}), dica:t('op.res.ocupados_d') },
     { k:'livres', ico:'○', rot:t('op.res.livres'), cls:'r-livre', val:n=>{ const c = cap(n), l = liv(n); return `<b>${l}</b> <em>${pc(l,c)}</em>`; }, tot: t('op.res.n_hoteis',{n:hsBase.filter(h=>FILTROS_RES.livres(h,ns)).length}), dica:t('op.res.livres_d') },
@@ -98,7 +99,7 @@ function resumo(hsBase, W){
     return `<div class="rc${on?' on':''}"${r.k?` data-res="${r.k}" data-res-n="${n}"`:''} style="left:${l}px;width:${w}px">${r.val(n)}</div>`; };
   const cab = `<div class="tlg-row res-h"><div class="tlg-lab"><button type="button" class="chev" id="op-res-tg" aria-expanded="${S.resAberto}">${S.resAberto?'▾':'▸'}</button><b>${esc(t('op.res.titulo'))}</b>${S.resFiltro?` <button type="button" class="res-limpa" id="op-res-x" title="${esc(t('op.res.limpar'))}">${esc(t('op.res.filtro_'+S.resFiltro))}${S.resNoite?' · '+esc(X.diaLocal(S.resNoite,12).toLocaleDateString(loc(),{day:'2-digit',month:'2-digit'})):''} ✕</button>`:''}</div><div class="tlg-track" style="width:${W}px"></div></div>`;
   if(!S.resAberto) return `<div class="tlg-res">${cab}</div>`;
-  return `<div class="tlg-res">${cab}${linhas.map(r=>`<div class="tlg-row res ${r.cls||''}${r.k && S.resFiltro===r.k && !S.resNoite?' on':''}"><div class="tlg-lab"${r.k?` data-res="${r.k}"`:''} title="${esc(r.dica)}"><span class="ri">${r.ico}</span><span class="rn">${esc(r.rot)}</span>${r.tot?`<span class="cnt2 ml">${esc(r.tot)}</span>`:''}</div>
+  return `<div class="tlg-res">${cab}${linhas.map(r=>`<div class="tlg-row res ${r.cls||''}${r.k && S.resFiltro===r.k && !S.resNoite?' on':''}"><div class="tlg-lab"${r.k?` data-res="${r.k}"`:''} title="${esc(r.dica)}"><span class="ri">${r.ico}</span><span class="rn">${esc(r.rot)}${r.ex?` <span class="tag amber ex" title="${esc(t('op.res.ex_d'))}">${esc(t('op.res.ex'))}</span>`:''}</span>${r.tot?`<span class="cnt2 ml">${esc(r.tot)}</span>`:''}</div>
     <div class="tlg-track" style="width:${W}px">${ns.map(n=>cel(r,n)).join('')}</div></div>`).join('')}</div>`;
 }
 
@@ -333,6 +334,7 @@ const css = document.createElement('style'); css.textContent = `
   .rc[data-res]{cursor:pointer} .rc[data-res]:hover{background:var(--gray-soft)} .rc.on{background:var(--accent-soft);outline:1.5px solid var(--accent)}
   .rc b{color:var(--ink);font-weight:700} .rc em{font-style:normal;color:var(--ink-3);margin-left:4px}
   .r-ocup .ri,.r-ocup .rc b{color:var(--blue)} .r-livre .ri,.r-livre .rc b{color:var(--green)} .r-apert .ri,.r-apert .rc b{color:var(--red)}
+  .tlg-row.res .tag.ex{font-size:9.5px;padding:0 4px;vertical-align:1px}
   .res-limpa{border:1px solid var(--accent);background:var(--accent-soft);color:var(--accent);border-radius:999px;font-size:11px;padding:0 8px;text-transform:none;letter-spacing:0;margin-left:6px;cursor:pointer}
   .tlg-row.grp .occ2{height:18px;top:6px}
   @media (max-width:1800px){ .op-cnt .chip span{display:none} }
