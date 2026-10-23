@@ -39,7 +39,7 @@ function conteudoOcupacao(el){
       ${h ? `<span>${esc(t('op.livres_api'))}</span><b>${api ? `${api.quartos_livres} <span class="muted">· ${esc(atualizadoHa(api.atualizado_em))}</span>` : '<span class="muted">'+esc(t('op.sem_api'))+'</span>'}</b>
       <span>${esc(t('op.diaria'))}</span><b>${X.fMoeda(h.tarifa, h.moeda)}</b><span>${esc(t('op.receita_noite'))}</span><b>${X.fMoeda(u*Number(h.tarifa||0), h.moeda)}</b>` : ''}</div>
     ${api && api.quartos_livres < Math.max(0,c-u) ? `<div class="hc-m">${esc(t('op.api_alerta'))}</div>` : ''}
-    ${h ? `<div class="hc-f">${esc(t('op.dica_occ'))}</div>` : ''}`;
+    ${h ? `<div class="hc-f">${esc(t('op.dica_occ2'))}</div>` : ''}`;
 }
 function posicionar(e){ const w = card.offsetWidth, hh = card.offsetHeight; let x = e.clientX + 16, y = e.clientY + 16;
   if(x + w > innerWidth - 8) x = e.clientX - w - 16; if(y + hh > innerHeight - 8) y = Math.max(8, e.clientY - hh - 16); card.style.left = x+'px'; card.style.top = y+'px'; }
@@ -58,7 +58,7 @@ window.addEventListener('blur', ()=>{ card.hidden = true; });
 /* ---------- "agora" e "+48h" andam sozinhas, a cada minuto, sem redesenhar a tela ---------- */
 setInterval(()=>{
   if(S.view !== 'operacao') return;
-  const ini = X.diaLocal(S.ini,0).getTime(), pxh = 14 * [0.5,0.75,1,1.5,2][S.zoomIdx];
+  const ini = X.diaLocal(S.ini,0).getTime(), pxh = window.SL_pxh ? window.SL_pxh() : 14 * [0.5,0.75,1,1.5,2][S.zoomIdx];
   const x = d => (d - ini)/3600000 * pxh, agora = Date.now(), crit = agora + 48*3600000;
   const tz = d => new Date(d).toLocaleString(loc(), { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
   document.querySelectorAll('.ln-agora,.lb-agora').forEach(el=>{ el.style.left = x(agora)+'px'; });

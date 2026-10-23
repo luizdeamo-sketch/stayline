@@ -9,6 +9,7 @@
 const X = window.SLX; if(!X) return;
 const { S, t, esc, $, $$ } = X;
 const PXH = 14, ZOOM = [0.5, 0.75, 1, 1.5, 2], ROW = 30, LANE = 22, CRIT_H = 48, MAX_NOITES = 31;   // janela crítica de 48h, igual ao Smart Escala
+S.escala = S.escala || X.lsGet('sl_escala', 'dia');   // 'dia' (padrão: pernoite dura 24–36h) ou 'hora'
 S.zoomIdx = S.zoomIdx ?? 2; S.frac = S.frac ?? 0.36; S.abertos = S.abertos || new Set(); S.recolhidas = S.recolhidas || new Set(); S.ordem = S.ordem || 'urgencia';
 let primeiraVez = true;
 const todosAbertos = ()=> S.hoteis.filter(h=>h.ativo).every(h=> S.abertos.has(h.id));
@@ -16,7 +17,12 @@ const todosAbertos = ()=> S.hoteis.filter(h=>h.ativo).every(h=> S.abertos.has(h.
 const ms = d => new Date(d).getTime();
 const inicioMs = ()=> X.diaLocal(S.ini, 0).getTime();
 const nDias = ()=> Math.round((X.diaLocal(S.fim,0) - X.diaLocal(S.ini,0))/86400000) + 2;   // +1 para a manhã de saída da última noite
-const pxh = ()=> PXH * ZOOM[S.zoomIdx];
+const DIA_PX = 120;   // largura de um dia na visão por dia (zoom 100%)
+// na visão por dia, em 100% os dias se esticam para preencher a largura da tela
+let diaPxMemo = null;
+const diaPx = ()=>{ if(diaPxMemo) return diaPxMemo; const m = document.querySelector('.main'); const livre = m ? m.clientWidth - 24 - (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--lab')) || 320) - 20 : 0; return diaPxMemo = Math.max(DIA_PX, Math.floor(livre / nDias())); };
+const pxh = ()=> (S.escala === 'dia' ? diaPx()/24 : PXH) * ZOOM[S.zoomIdx];
+window.SL_pxh = pxh;
 const xDe = d => (ms(d) - inicioMs())/3600000 * pxh();
 const dias = ()=> Array.from({length:nDias()}, (_,i)=> X.somaDias(S.ini, i));
 const loc = ()=> X.S.lang==='pt' ? 'pt-BR' : 'en-US';
@@ -41,25 +47,26 @@ function bloco(p){
   const crit = p.situacao==='a_alocar' && ms(p.chegada) <= Date.now() + CRIT_H*3600000;
   return `<div class="blk b2-${p.situacao}${crit?' crit':''}" data-p="${p.id}" ${p.situacao!=='cancelado'?'draggable="true"':''} aria-label="${esc(tip)}" style="left:${l}px;width:${w}px;top:${p._lane*LANE+6}px">${p.origem==='nao_previsto'?'⚡ ':''}<b>${esc(p.lider.replace(/^(CMD|COP|CMS) /,''))}</b>${p.qtd>1?' +'+(p.qtd-1):''} · ${esc((p.voo_chegada||'').replace('G3 ',''))}</div>`;
 }
-function celulasOcupacao(usadoPorNoite, cap, hotelId){   // uma célula por noite, alinhada da chegada típica (16h) à saída típica (10h)
+function celulasOcupacao(usadoPorNoite, cap, hotelId, livresPorNoite){   // uma célula por noite, alinhada da chegada típica (16h) à saída típica (10h)
   return noitesDoPeriodo().map(n=>{ const u = usadoPorNoite(n); const pc = cap ? u/cap*100 : (u?100:0); const cls = pc>=100 ? 'full' : pc>=80 ? 'mid' : u ? 'ok' : 'zero';
-    const l = xDe(X.diaLocal(n,16)), w = xDe(X.diaLocal(n,34)) - l;
-    const api = hotelId && S.disp[hotelId+'|'+n]; const alerta = api && api.quartos_livres < Math.min(cap-u, Math.ceil(cap*0.3)) ? ' api-baixo' : '';   // só avisa quando o hotel está apertado de verdade
+    const l = S.escala === 'dia' ? xDe(X.diaLocal(n,0)) + 3 : xDe(X.diaLocal(n,16)), w = S.escala === 'dia' ? 24*pxh() - 6 : xDe(X.diaLocal(n,34)) - l;
+    const api = hotelId ? S.disp[hotelId+'|'+n] : (livresPorNoite ? { quartos_livres: livresPorNoite(n) } : null); const livres = api ? api.quartos_livres : Math.max(0, cap-u), folga = cap ? livres/cap : 0;
+    const alerta = !cap ? '' : folga < 0.2 ? ' f-baixa' : folga < 0.5 ? ' f-media' : ' f-alta';   // verde = sobra quarto, âmbar = apertando, vermelho = quase lotado
     const txt = api ? `<b>${api.quartos_livres}</b> ${esc(t('op.livres_curto'))}<em>${u ? u+'/' : ''}${cap}</em>` : `${u}/${cap}`;
     return `<div class="occ2 ${cls}${alerta}" data-occ="${hotelId||''}" data-noite="${n}" data-u="${u}" data-c="${cap}" style="left:${l}px;width:${w}px"><i style="width:${Math.min(100,pc)}%"></i><span>${txt}</span></div>`; }).join('');
 }
 function cabecalho(contagem){
   const dw = 24*pxh(); const ds = dias();
-  const horas = ZOOM[S.zoomIdx] >= 0.75 ? [0,3,6,9,12,15,18,21] : [0,12];
+  const horas = S.escala === 'dia' ? [] : ZOOM[S.zoomIdx] >= 0.75 ? [0,3,6,9,12,15,18,21] : [0,12];
   return `<div class="tlg-head"><div class="tlg-corner"></div><div class="tlg-days" style="width:${ds.length*dw}px">${ds.map(d=>{ const c = contagem && contagem[d];
-      const nome = X.diaLocal(d,12).toLocaleDateString(loc(), ZOOM[S.zoomIdx] < 0.75 ? { day:'2-digit', month:'2-digit' } : { weekday:'short', day:'2-digit', month:'2-digit' });
+      const nome = X.diaLocal(d,12).toLocaleDateString(loc(), (S.escala === 'dia' ? pxh()*24 < 100 : ZOOM[S.zoomIdx] < 0.75) ? { day:'2-digit', month:'2-digit' } : { weekday:'short', day:'2-digit', month:'2-digit' });
       return `<div class="tlg-day${fimSemana(d)?' fds':''}" style="width:${dw}px"><div class="tlg-dn">${esc(nome)}${c&&c.total?` <span class="cnt2" title="${esc(t('op.badge.dia',{a:c.a,t:c.total}))}">${c.a}/${c.total}</span>`:''}</div>
         <div class="tlg-hr">${horas.map(h=>`<span style="left:${h*pxh()}px">${h}</span>`).join('')}</div></div>`; }).join('')}</div></div>`;
 }
 function sobreposicao(comRotulos){
   const ds = dias(), dw = 24*pxh(), agora = Date.now(), xa = xDe(agora), xc = xDe(agora + CRIT_H*3600000);
   const tz = d => new Date(d).toLocaleString(loc(), { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
-  return `<div class="tlg-over" style="width:${ds.length*dw}px">${ds.map((d,i)=> (fimSemana(d) ? `<i class="fds-col" style="left:${i*dw}px;width:${dw}px"></i>` : '') + `<i class="ln-dia" style="left:${i*dw}px"></i><i class="ln-meio" style="left:${i*dw+dw/2}px"></i>`).join('')}
+  return `<div class="tlg-over" style="width:${ds.length*dw}px">${ds.map((d,i)=> (fimSemana(d) ? `<i class="fds-col" style="left:${i*dw}px;width:${dw}px"></i>` : '') + `<i class="ln-dia" style="left:${i*dw}px"></i>${S.escala === 'dia' ? '' : `<i class="ln-meio" style="left:${i*dw+dw/2}px"></i>`}`).join('')}
     <i class="ln-agora" style="left:${xa}px"></i>${comRotulos?`<span class="lb-agora" style="left:${xa}px">${esc(t('op.agora',{h:tz(agora)}))}</span>`:''}
     <i class="ln-crit" style="left:${xc}px"></i>${comRotulos?`<span class="lb-crit" style="left:${xc}px">+${CRIT_H}h ${esc(tz(agora + CRIT_H*3600000))}</span>`:''}</div>`;
 }
@@ -97,12 +104,12 @@ window.SL_renderOperacao = function(){
     const fechada = !unico && S.recolhidas.has(b.codigo);
     const capBase = hs.reduce((a,h)=>a+h.quartos_dia,0);
     const cab = unico ? '' : `<div class="tlg-row grp" style="height:${ROW}px"><div class="tlg-lab"><button type="button" class="chev" data-grp="${esc(b.codigo)}" aria-expanded="${!fechada}" title="${esc(fechada?t('op.abrir_base'):t('op.fechar_base'))}">${fechada?'▸':'▾'}</button><b class="mono">${esc(b.codigo)}</b> <span class="muted">${esc(b.cidade)} · ${esc(t('op.hoteis.n',{n:hs.length}))}</span></div>
-      <div class="tlg-track" style="width:${W}px">${celulasOcupacao(n=> hs.reduce((a,h)=>a+X.usados(h.id,n),0), capBase)}</div></div>`;
+      <div class="tlg-track" style="width:${W}px">${celulasOcupacao(n=> hs.reduce((a,h)=>a+X.usados(h.id,n),0), capBase, null, n=> hs.reduce((a,h)=>{ const d = S.disp[h.id+'|'+n]; return a + (d ? d.quartos_livres : Math.max(0, h.quartos_dia - X.usados(h.id,n))); }, 0))}</div></div>`;
     if(fechada) return cab;
     return cab + hs.map(h=>{ const aberto = S.abertos.has(h.id) || (S.busca && vis.some(p=>p.hotel_id===h.id));
-      const ps = vis.filter(p=>p.hotel_id===h.id); const lanes = aberto ? faixas(ps) : 1; const alt = aberto ? Math.max(ROW, lanes*LANE+10) : ROW;
+      const ps = vis.filter(p=>p.hotel_id===h.id); const lanes = aberto && ps.length ? faixas(ps) : 1; const alt = aberto ? Math.max(ROW, lanes*LANE+10) : ROW;
       return `<div class="tlg-row hot${unico?' unico':''}${aberto?' aberto':''}" data-drop-hotel="${h.id}" style="height:${alt}px"><div class="tlg-lab"><button type="button" class="chev" data-hot="${h.id}" aria-expanded="${aberto}" title="${esc(aberto?t('op.fechar_hotel'):t('op.abrir_hotel'))}">${aberto?'▾':'▸'}</button>${unico?`<b class="bc mono" title="${esc(b.cidade)}">${esc(b.codigo)}</b>`:''}<span class="hn" data-ficha="${h.id}" title="${esc(h.nome+' — '+t('op.ficha'))}">${esc(h.nome)}</span>${h.aviso?`<span class="avi" title="${esc(h.aviso)}">⚠</span>`:''}${h.tipo!=='primario'?`<span class="tp" title="${esc(t('ht.secundario'))}">S</span>`:''}<span class="diaria mono">${esc(X.fMoeda(h.tarifa, h.moeda))}</span></div>
-        <div class="tlg-track" style="width:${W}px">${aberto ? ps.map(bloco).join('') : celulasOcupacao(n=>X.usados(h.id,n), h.quartos_dia, h.id)}</div></div>`; }).join('');
+        <div class="tlg-track" style="width:${W}px">${aberto && ps.length ? ps.map(bloco).join('') : celulasOcupacao(n=>X.usados(h.id,n), h.quartos_dia, h.id)}</div></div>`; }).join('');
   }).join('');
 
   const semPend = !pend.length;
@@ -113,13 +120,14 @@ window.SL_renderOperacao = function(){
       <input id="h-busca" type="search" placeholder="${esc(t('hoje.busca'))}" value="${esc(S.busca||'')}" aria-label="${esc(t('hoje.busca'))}">
       <div class="chips op-cnt">${['todos','a_alocar','a_reconfirmar','alocado','confirmado'].map(k=>`<button type="button" class="chip k-${k}" data-f="${k}" aria-pressed="${S.filtro===k}" title="${esc(k==='todos'?t('chip.todos'):t('sit.'+k))}"><b>${cont[k]}</b><span>${esc(k==='todos'?t('chip.todos'):t('sit.'+k))}</span></button>`).join('')}</div>
       <span class="grow"></span>
+      <div class="seg op-esc" role="group" aria-label="${esc(t('op.escala'))}"><button type="button" data-esc="dia" class="${S.escala==='dia'?'on':''}">${esc(t('op.esc.dia'))}</button><button type="button" data-esc="hora" class="${S.escala==='hora'?'on':''}">${esc(t('op.esc.hora'))}</button></div>
       <div class="zoom"><button type="button" id="op-zm" title="${esc(t('op.zoom.menos'))}" aria-label="${esc(t('op.zoom.menos'))}" ${S.zoomIdx===0?'disabled':''}>−</button><span class="mono">${Math.round(ZOOM[S.zoomIdx]*100)}%</span><button type="button" id="op-zp" title="${esc(t('op.zoom.mais'))}" aria-label="${esc(t('op.zoom.mais'))}" ${S.zoomIdx===ZOOM.length-1?'disabled':''}>+</button></div>
       <button class="btn sm" type="button" id="op-exp" title="${esc(todosAbertos() ? t('op.recolher') : t('op.expandir'))}">${todosAbertos()?'▾':'▸'} ${esc(t('op.hoteis_curto'))}</button>
       <button class="btn sm${S.demo?' demo-on':''}" id="op-demo" type="button" aria-pressed="${S.demo}" title="${esc(t(S.demo?'op.demo_faixa':'op.demo_d'))}">${S.demo?'●':'○'} ${esc(t('op.demo'))}</button>
       <details class="op-mais"><summary class="btn sm" title="${esc(t('op.mais'))}" aria-label="${esc(t('op.mais'))}">⋯</summary><div class="op-menu card">
         <button type="button" id="h-novo">+ ${esc(t('hoje.novo'))}</button><button type="button" id="op-contratos">${esc(t('op.contratos'))}</button><button type="button" id="h-imp">${esc(t('hoje.importar'))}</button><button type="button" id="h-auto">${esc(t('hoje.auto'))}</button><label class="op-ord"><select id="op-ordem"><option value="urgencia" ${S.ordem==='urgencia'?'selected':''}>${esc(t('op.ordem.urgencia'))}</option><option value="az" ${S.ordem==='az'?'selected':''}>${esc(t('op.ordem.az'))}</option></select></label></div></details>
     </div>
-    <div class="op-paineis card" id="op-paineis">
+    <div class="op-paineis card modo-${S.escala}" id="op-paineis">
       <div class="op-sec${semPend?' vazio':''}" id="op-sec-top" style="flex:${semPend?'0 0 auto':'0 0 '+(S.frac*100)+'%'}"><div class="op-tit">⚠ ${esc(t('op.painel.abertos'))} <span class="sub">${semPend ? '✓ '+esc(t('op.vazio.top')) : esc(t('op.painel.n',{n:pend.length}))}</span><span class="leg"><i class="b2-a_alocar"></i>${esc(t('sit.a_alocar'))} <i class="b2-alocado"></i>${esc(t('sit.alocado'))} <i class="b2-a_reconfirmar"></i>${esc(t('sit.a_reconfirmar'))} <i class="b2-confirmado"></i>${esc(t('sit.confirmado'))}</span></div>
         <div class="op-scroll" id="op-top"${semPend?' hidden':''}><div class="tlg" style="width:calc(var(--lab) + ${W}px)">${cabecalho(porDia)}<div class="tlg-body com-rotulos">${sobreposicao(true)}${htmlTop || `<div class="empty">${esc(t('op.vazio.top'))}</div>`}</div></div></div></div>
       <div class="op-div" id="op-div"${semPend?' hidden':''} role="separator" aria-orientation="horizontal" title="${esc(t('op.divisor'))}"></div>
@@ -130,7 +138,7 @@ window.SL_renderOperacao = function(){
 };
 
 function alturaPaineis(){ const el = $('#op-paineis'); if(!el) return; const top = el.getBoundingClientRect().top + scrollY; el.style.height = Math.max(420, innerHeight - (top - scrollY) - 8) + 'px'; }
-window.addEventListener('resize', ()=>{ if(S.view==='operacao') alturaPaineis(); });
+let tRes; window.addEventListener('resize', ()=>{ if(S.view!=='operacao') return; alturaPaineis(); if(S.escala==='dia'){ clearTimeout(tRes); tRes = setTimeout(()=> X.render(), 200); } });
 
 function ligar(v, antes){
   alturaPaineis();
@@ -145,6 +153,7 @@ function ligar(v, antes){
   $('#h-base').addEventListener('change', e=>{ S.base = e.target.value; X.render(); });
   const bs = $('#h-busca'); bs.addEventListener('input', ()=>{ S.busca = bs.value; const pos = bs.selectionStart; X.render(); const n = $('#h-busca'); n.focus(); n.setSelectionRange(pos,pos); });
   $('#op-ordem').addEventListener('change', e=>{ S.ordem = e.target.value; X.render(); });
+  $$('[data-esc]', v).forEach(b=> b.addEventListener('click', ()=>{ if(S.escala === b.dataset.esc) return; S.escala = b.dataset.esc; X.lsSet('sl_escala', S.escala); primeiraVez = true; X.render(); }));
   $('#op-zm').addEventListener('click', ()=> zoom(-1)); $('#op-zp').addEventListener('click', ()=> zoom(1));
   $('#op-exp').addEventListener('click', ()=>{ if(todosAbertos()) S.abertos.clear(); else S.hoteis.forEach(h=>S.abertos.add(h.id)); X.render(); });
   $('#op-hoje').addEventListener('click', ()=> periodo(X.hojeISO(), X.somaDias(X.hojeISO(),6), true));
@@ -164,7 +173,7 @@ function ligar(v, antes){
     el.addEventListener('dragstart', e=>{ e.dataTransfer.setData('text/plain', el.dataset.p); e.dataTransfer.effectAllowed = 'move'; document.body.classList.add('arrastando'); });
     el.addEventListener('dragend', ()=> document.body.classList.remove('arrastando'));
   });
-  $$('.occ2', v).forEach(el=> el.addEventListener('click', ()=>{ const row = el.closest('[data-drop-hotel]'); if(row){ S.abertos.add(row.dataset.dropHotel); X.render(); } }));
+  $$('.occ2', v).forEach(el=> el.addEventListener('click', ()=>{ if(el.dataset.occ) window.SL_fichaHotel(el.dataset.occ); }));
   $$('[data-drop-hotel],[data-drop-base]', v).forEach(row=>{
     row.addEventListener('dragover', e=>{ e.preventDefault(); row.classList.add('sobre'); });
     row.addEventListener('dragleave', ()=> row.classList.remove('sobre'));
@@ -234,7 +243,7 @@ const css = document.createElement('style'); css.textContent = `
   .tlg-corner{position:sticky;left:0;z-index:21;width:var(--lab);flex:none;background:var(--panel);border-right:1px solid var(--line)}
   .tlg-days{display:flex;flex:none}
   .tlg-day{flex:none;border-right:1px solid var(--day-line);display:grid;grid-template-rows:22px 16px}
-  .tlg-day.fds{background:color-mix(in srgb, var(--amber) 9%, transparent)}
+  .tlg-day.fds{background:color-mix(in srgb, var(--ink) 4%, transparent)}
   .tlg-dn{font-size:11.5px;font-weight:600;display:flex;gap:6px;align-items:center;justify-content:center;text-transform:capitalize}
   .tlg-hr{position:relative;font-family:var(--fm);font-size:9.5px;color:var(--ink-3)} .tlg-hr span{position:absolute;top:1px;transform:translateX(2px)}
   .cnt2{font-family:var(--fm);font-size:10.5px;font-weight:600;background:var(--gray-soft);color:var(--ink-2);border-radius:4px;padding:0 5px;text-transform:none}
@@ -256,7 +265,7 @@ const css = document.createElement('style'); css.textContent = `
   .tlg-row.sobre{outline:2px solid var(--accent);outline-offset:-2px} .tlg-row.sobre .tlg-lab{background:var(--accent-soft)}
   body.arrastando [data-drop-hotel] .tlg-lab, body.arrastando [data-drop-base] .tlg-lab{box-shadow:inset 3px 0 0 var(--accent)}
   .tlg-over{position:absolute;top:0;bottom:0;left:var(--lab);pointer-events:none;z-index:10}
-  .fds-col{position:absolute;top:0;bottom:0;background:color-mix(in srgb, var(--amber) 6%, transparent)}
+  .fds-col{position:absolute;top:0;bottom:0;background:color-mix(in srgb, var(--ink) 2.5%, transparent)}
   .ln-agora{position:absolute;top:0;bottom:0;width:2px;background:var(--red)} .ln-crit{position:absolute;top:0;bottom:0;width:2px;background:color-mix(in srgb, var(--ink) 60%, transparent)}
   .lb-agora,.lb-crit{position:absolute;top:2px;transform:translateX(-50%);font-size:10px;font-weight:600;padding:1px 6px;border-radius:4px;white-space:nowrap;z-index:11}
   .lb-agora{background:var(--red);color:#fff} .lb-crit{background:var(--ink);color:var(--panel)}
@@ -267,10 +276,17 @@ const css = document.createElement('style'); css.textContent = `
   .blk.b2-alocado{color:var(--ink);border:1px dashed var(--bar-ok)}
   .blk.crit{box-shadow:0 0 0 2px var(--panel),0 0 0 3.5px var(--red)}
   .crit-tag{background:var(--red);color:#fff;border-radius:4px;font-size:10px;font-weight:700;padding:0 5px}
-  .occ2{position:absolute;top:5px;height:20px;border-radius:5px;background:var(--gray-soft);overflow:hidden;cursor:pointer;z-index:4}
-  .occ2 i{position:absolute;left:0;top:0;bottom:0;background:var(--bar-done);opacity:.55} .occ2.mid i{background:var(--bar-warn)} .occ2.full i{background:var(--bar-new);opacity:.75} .occ2.zero{opacity:.6}
+  .occ2{position:absolute;top:5px;height:20px;border-radius:5px;background:var(--gray-soft);overflow:hidden;cursor:pointer;z-index:4;border:1px solid color-mix(in srgb, var(--ink) 8%, transparent)}
+  .occ2 i{position:absolute;left:0;top:0;bottom:0;background:var(--bar-done);opacity:.35} .occ2.mid i{background:var(--bar-warn)} .occ2.full i{background:var(--bar-new);opacity:.6}
   .occ2 span{position:relative;font-family:var(--fm);font-size:11px;font-weight:500;padding:0 6px;line-height:20px;color:var(--ink-2)}
   .occ2 span b{color:var(--ink);font-weight:700} .occ2 span em{font-style:normal;color:var(--ink-3);margin-left:6px}
+  .occ2.f-alta{background:var(--green-soft)} .occ2.f-alta span b{color:var(--green)}
+  .occ2.f-media{background:var(--amber-soft)} .occ2.f-media span b{color:var(--amber)}
+  .occ2.f-baixa{background:var(--red-soft, color-mix(in srgb, var(--red) 14%, transparent))} .occ2.f-baixa span b{color:var(--red)}
+  .occ2:hover{outline:1.5px solid var(--accent);outline-offset:-1px}
+  .modo-dia .occ2{text-align:center} .modo-dia .tlg-track{background-image:linear-gradient(to right, var(--day-line) 1px, transparent 1px);background-size:calc(24 * ${PXH}px * var(--z)) 100%}
+  .modo-dia .tlg-day{grid-template-rows:38px} .modo-dia .tlg-hr{display:none}
+  .op-esc button{padding:4px 10px;height:28px}
   .tlg-row.grp .occ2{height:18px;top:6px}
   @media (max-width:1800px){ .op-cnt .chip span{display:none} }
   @media (max-width:760px){ :root{ --lab:170px } .op-tit .leg{display:none} .op-bar #h-busca{width:100%} .op-bar .grow{display:none} }`;
@@ -278,5 +294,5 @@ document.head.appendChild(css);
 // largura do dia acompanha o zoom (fundo com as linhas de hora e de dia)
 const zcss = document.createElement('style'); document.head.appendChild(zcss);
 const _render = window.SL_renderOperacao;
-window.SL_renderOperacao = function(){ zcss.textContent = ':root{--z:'+ZOOM[S.zoomIdx]+'}'; _render(); };
+window.SL_renderOperacao = function(){ diaPxMemo = null; zcss.textContent = ':root{--z:'+(pxh()/PXH)+'}'; _render(); };
 })();
