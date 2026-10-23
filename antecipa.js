@@ -7,7 +7,7 @@
 const X = window.SLX; if(!X) return;
 const { S, t, esc, $, $$ } = X;
 const loc = ()=> S.lang==='pt' ? 'pt-BR' : 'en-US';
-S.antFiltro = S.antFiltro || 'a_vencer';
+S.antFiltro = S.antFiltro || 'a_vencer'; S.antVista = S.antVista || X.lsGet('sl_ant_vista', 'linha');   // 'linha' (linha do tempo por mês) ou 'tabela'
 let FAT = [];
 
 const num = (k, d) => { const v = parseFloat((S.config||{})[k]); return isNaN(v) ? d : v; };
@@ -61,33 +61,34 @@ function desenhar(){
     <div class="kpis">
       <div class="card kpi"><small>${esc(t('ant.k.avencer'))}</small><b>${X.fMoeda(soma(aVencer,'liquido'))}</b><span>${esc(t('ant.k.avencer.s',{n:aVencer.length}))}</span></div>
       <div class="card kpi"><small>${esc(t('ant.k.prazo'))}</small><b>${Math.round(prazoMedio)} ${esc(t('ant.dias'))}</b><span>${esc(t('ant.k.prazo.s'))}</span></div>
-      <div class="card kpi hl"><small>${esc(t('ant.k.spread'))}</small><b>${X.fMoeda(soma(eleg,'desconto'))}</b><span>${esc(t('ant.k.spread.s',{n:eleg.length, c:X.fMoeda(soma(eleg,'hotelRecebe'))}))}</span></div>
+      <div class="card kpi hl" title="${esc(t('ant.k.spread_d'))}"><small>${esc(t('ant.k.spread'))}</small><b>${X.fMoeda(soma(eleg,'desconto'))} <em class="kpi-pct">${pct(soma(eleg,'liquido') ? soma(eleg,'desconto')/soma(eleg,'liquido')*100 : 0)}</em></b><span>${esc(t('ant.k.spread.s2',{n:eleg.length, c:X.fMoeda(soma(eleg,'hotelRecebe'))}))}</span></div>
       <div class="card kpi"><small>${esc(t('ant.k.andamento'))}</small><b>${andamento.length}</b><span>${X.fMoeda(andamento.reduce((s,r)=>s+Number((r.f.antecipacao||{}).valor_hotel||r.c.hotelRecebe),0))}</span></div>
       <div class="card kpi"><small>${esc(t('ant.k.lucro'))}</small><b>${X.fMoeda(lucro)}</b><span>${esc(t('ant.k.lucro.s',{n:pagas.length}))}</span></div>
     </div>
+    <div class="ant-conta card"><b>${esc(t('ant.conta.tit'))}</b> ${t('ant.conta',{com:'<b>'+esc(t('ant.comissao'))+'</b>', liq:'<b>'+esc(t('ant.liquido'))+'</b>', tx:'<b>'+esc(t('ant.taxa'))+'</b>', sp:'<b>'+esc(t('ant.desconto'))+'</b>', mes:pct(P.mes), min:pct(P.min), max:pct(P.max), fixa:X.fMoeda(P.fixa)})}</div>
     <div class="card op-tools">
-      <span class="sub">${esc(t('ant.regra',{mes:pct(P.mes),min:pct(P.min),max:pct(P.max),fixa:X.fMoeda(P.fixa)}))}</span>
+      <div class="seg" role="group"><button type="button" data-av="linha" class="${S.antVista==='linha'?'on':''}">${esc(t('ant.vista.linha'))}</button><button type="button" data-av="tabela" class="${S.antVista==='tabela'?'on':''}">${esc(t('ant.vista.tabela'))}</button></div>
       <span style="flex:1"></span>
       ${hotelFiltro?`<span class="tag amber">${esc(hotelFiltro.nome)} <button type="button" id="an-xh" class="chev" aria-label="✕">✕</button></span>`:''}
       <select id="an-base" aria-label="${esc(t('col.base'))}"><option value="">${esc(t('hoje.todas_bases'))}</option>${S.bases.map(b=>`<option value="${esc(b.codigo)}" ${S.base===b.codigo?'selected':''}>${esc(b.codigo)} · ${esc(b.cidade)}</option>`).join('')}</select>
       <input id="an-busca" type="search" placeholder="${esc(t('ant.busca'))}" value="${esc(S.antBusca||'')}" aria-label="${esc(t('ant.busca'))}">
     </div>
-    <div class="chips">${['a_vencer','ofertada','aprovada','paga','recusada','todas'].map(k=>`<button type="button" class="chip" data-af="${k}" aria-pressed="${S.antFiltro===k}"><b>${cont[k]}</b><span>${esc(k==='todas'?t('chip.todos'):t('ast.'+k))}</span></button>`).join('')}</div>
-    <div class="card tl"><div class="tl-scroll"><table class="ant-tab"><thead><tr>
-      <th>${esc(t('pn.hotel'))}</th><th>${esc(t('ant.competencia'))}</th><th class="r">${esc(t('ant.noites'))}</th><th class="r">${esc(t('ant.bruto'))}</th><th class="r">${esc(t('ant.comissao'))}</th><th class="r">${esc(t('ant.liquido'))}</th>
-      <th>${esc(t('ant.previsao'))}</th><th class="r">${esc(t('ant.taxa'))}</th><th class="r">${esc(t('ant.desconto'))}</th><th class="r">${esc(t('ant.recebe'))}</th><th>${esc(t('ant.status'))}</th><th></th></tr></thead>
+    <div class="chips"${S.antVista==='linha'?' hidden':''}>${['a_vencer','ofertada','aprovada','paga','recusada','todas'].map(k=>`<button type="button" class="chip" data-af="${k}" aria-pressed="${S.antFiltro===k}"><b>${cont[k]}</b><span>${esc(k==='todas'?t('chip.todos'):t('ast.'+k))}</span></button>`).join('')}</div>
+    ${S.antVista==='linha' ? linhaDoTempo(linhas.filter(r=> doBase(r) && (!S.antHotel || r.f.hotel_id===S.antHotel) && (!q || r.h.nome.toLowerCase().includes(q)))) : `<div class="card tl"><div class="tl-scroll"><table class="ant-tab"><thead><tr>
+      <th>${esc(t('pn.hotel'))}</th><th>${esc(t('ant.competencia'))}</th><th class="r">${esc(t('ant.noites'))}</th><th class="r">${esc(t('ant.bruto'))}</th><th class="r" title="${esc(t('ant.comissao_d'))}">${esc(t('ant.comissao'))} ⓘ</th><th class="r">${esc(t('ant.liquido'))}</th>
+      <th>${esc(t('ant.previsao'))}</th><th class="r" title="${esc(t('ant.taxa_d'))}">${esc(t('ant.taxa'))} ⓘ</th><th class="r" title="${esc(t('ant.desconto_d'))}">${esc(t('ant.desconto'))} ⓘ</th><th class="r">${esc(t('ant.recebe'))}</th><th>${esc(t('ant.status'))}</th><th></th></tr></thead>
       <tbody>${visiveis.map(({f,h,c})=>{ const a = f.antecipacao||{};
         const acao = f.status==='a_vencer' ? (c.dias>0 ? `<button class="btn ${c.elegivel?'pri':''}" type="button" data-sim="${f.id}">${esc(t('ant.simular'))}</button>` : '')
           : f.status==='ofertada' ? `<button class="btn" type="button" data-sim="${f.id}">${esc(t('ant.resposta'))}</button>`
           : f.status==='aprovada' ? `<button class="btn pri" type="button" data-sim="${f.id}">${esc(t('ant.pagar'))}</button>`
           : f.status==='paga' ? `<button class="btn" type="button" data-sim="${f.id}">${esc(t('ant.recibo'))}</button>` : '';
-        return `<tr><td><b>${esc(h.nome)}</b><div class="sub"><span class="mono">${esc(h.base)}</span></div></td><td style="text-transform:capitalize">${esc(fMes(f.competencia))}</td><td class="mono r">${f.noites}</td>
+        return `<tr class="clk" data-fat="${f.id}"><td><b class="hn" data-hx="${h.id}">${esc(h.nome)}</b><div class="sub"><span class="mono">${esc(h.base)}</span></div></td><td style="text-transform:capitalize">${esc(fMes(f.competencia))}</td><td class="mono r">${f.noites}</td>
           <td class="mono r">${X.fMoeda(f.valor_bruto)}</td><td class="mono r">${X.fMoeda(c.comissao)}</td><td class="mono r"><b>${X.fMoeda(c.liquido)}</b></td>
           <td class="mono">${fData(f.previsao)}<div class="sub">${c.dias>0?esc(t('ant.em_dias',{n:c.dias})):esc(t('ant.vencida'))}</div></td>
           <td class="mono r">${f.status==='liquidada'||c.dias<=0?'—':pct(a.taxa_pct!=null?Number(a.taxa_pct):c.taxa)}</td><td class="mono r">${f.status==='liquidada'||c.dias<=0?'—':X.fMoeda(a.desconto!=null?Number(a.desconto):c.desconto)}</td>
           <td class="mono r">${f.status==='liquidada'||c.dias<=0?'—':'<b>'+X.fMoeda(a.valor_hotel!=null?Number(a.valor_hotel):c.hotelRecebe)+'</b>'}</td>
           <td><span class="pill ast-${f.status}">${esc(t('ast.'+f.status))}</span>${f.status==='a_vencer'&&!c.elegivel&&c.dias>0?`<div class="sub">${esc(t('ant.abaixo_min'))}</div>`:''}</td><td>${acao}</td></tr>`; }).join('')}</tbody></table>
-      ${visiveis.length?'':`<div class="empty">${esc(t('ant.vazio'))}</div>`}</div></div>
+      ${visiveis.length?'':`<div class="empty">${esc(t('ant.vazio'))}</div>`}</div></div>`}
     <p class="sub">${esc(t('ant.nota'))}</p>`;
 
   $$('[data-af]', v).forEach(b=> b.addEventListener('click', ()=>{ S.antFiltro = b.dataset.af; desenhar(); }));
@@ -95,7 +96,62 @@ function desenhar(){
   const bs = $('#an-busca'); bs.addEventListener('input', ()=>{ S.antBusca = bs.value; const p = bs.selectionStart; desenhar(); const n = $('#an-busca'); n.focus(); n.setSelectionRange(p,p); });
   const xh = $('#an-xh'); if(xh) xh.addEventListener('click', ()=>{ S.antHotel = null; desenhar(); });
   const par = $('#an-par'); if(par) par.addEventListener('click', modalParametros);
-  $$('[data-sim]', v).forEach(b=> b.addEventListener('click', ()=> modalAntecipar(FAT.find(f=>f.id===b.dataset.sim))));
+  $$('[data-sim]', v).forEach(b=> b.addEventListener('click', e=>{ e.stopPropagation(); modalAntecipar(FAT.find(f=>f.id===b.dataset.sim)); }));
+  $$('[data-av]', v).forEach(b=> b.addEventListener('click', ()=>{ S.antVista = b.dataset.av; X.lsSet('sl_ant_vista', S.antVista); desenhar(); }));
+  $$('tr[data-fat]', v).forEach(tr=> tr.addEventListener('click', e=>{ if(e.target.closest('[data-hx]')) return; modalAntecipar(FAT.find(f=>f.id===tr.dataset.fat)); }));
+  $$('[data-hx]', v).forEach(el=> el.addEventListener('click', e=>{ e.stopPropagation(); quadroHotel(el.dataset.hx); }));
+  $$('[data-cel]', v).forEach(el=> el.addEventListener('click', ()=> modalAntecipar(FAT.find(f=>f.id===el.dataset.cel))));
+}
+
+// Linha do tempo por mês: uma linha por hotel, uma coluna por mês de competência; cada célula conta a história da fatura
+// (quanto o hotel tem a receber, quando, e quanto ganharíamos antecipando hoje). Em cima, o total de cada mês.
+function linhaDoTempo(rs){
+  const meses = [...new Set(rs.map(r=> r.f.competencia))].sort();
+  if(!meses.length) return `<div class="card empty">${esc(t('ant.vazio'))}</div>`;
+  const hoteis = [...new Map(rs.map(r=> [r.h.id, r.h])).values()].sort((a,b)=> a.base.localeCompare(b.base) || a.nome.localeCompare(b.nome));
+  const por = {}; rs.forEach(r=> por[r.h.id+'|'+r.f.competencia] = r);
+  const vlr = r => r.f.status==='paga' || r.f.status==='aprovada' || r.f.status==='ofertada' ? Number((r.f.antecipacao||{}).valor_hotel ?? r.c.hotelRecebe) : r.c.liquido;
+  const totMes = m => rs.filter(r=> r.f.competencia===m);
+  const cab = meses.map(m=>{ const xs = totMes(m), liq = xs.reduce((a,r)=>a+r.c.liquido,0), sp = xs.filter(r=>r.c.elegivel).reduce((a,r)=>a+r.c.desconto,0), prev = xs[0] && xs[0].f.previsao;
+    return `<div class="at-mh"><b style="text-transform:capitalize">${esc(fMes(m))}</b><span class="mono">${X.fMoeda(liq)}</span><span class="sub">${prev?esc(t('ant.lt.paga_em',{d:fData(prev)})):''}${sp?` · <i class="sp">+${X.fMoeda(sp)}</i>`:''}</span></div>`; }).join('');
+  const linhasH = hoteis.map(h=>{ const tot = meses.reduce((a,m)=> a + (por[h.id+'|'+m] && por[h.id+'|'+m].f.status==='a_vencer' ? por[h.id+'|'+m].c.liquido : 0), 0);
+    return `<div class="at-row"><div class="at-lab"><b class="mono bc">${esc(h.base)}</b><span class="hn" data-hx="${h.id}" title="${esc(t('ant.lt.abrir'))}">${esc(h.nome)}</span><span class="mono sub">${tot?X.fMoeda(tot, h.moeda):''}</span></div>
+      ${meses.map(m=>{ const r = por[h.id+'|'+m]; if(!r) return '<div class="at-c vazio">·</div>';
+        const pode = r.f.status==='a_vencer' && r.c.dias>0;
+        return `<div class="at-c st-${r.f.status}" data-cel="${r.f.id}" title="${esc(t('ast.'+r.f.status))} · ${esc(fData(r.f.previsao))}"><b class="mono">${X.fMoeda(vlr(r), h.moeda)}</b>
+          <span>${esc(t('ast.'+r.f.status))}${pode?' · '+esc(t('ant.em_dias',{n:r.c.dias})):''}</span>${pode && r.c.elegivel?`<i class="sp">+${X.fMoeda(r.c.desconto, h.moeda)} · ${pct(r.c.taxa)}</i>`:''}</div>`; }).join('')}</div>`; }).join('');
+  return `<div class="card at-wrap"><div class="at-grid" style="--m:${meses.length}"><div class="at-row at-head"><div class="at-lab"><b>${esc(t('ant.lt.hoteis',{n:hoteis.length}))}</b><span class="sub">${esc(t('ant.lt.dica'))}</span></div>${cab}</div>${linhasH}</div></div>
+    <div class="at-leg sub">${['liquidada','a_vencer','ofertada','aprovada','paga','recusada'].map(k=>`<span><i class="st-${k}"></i>${esc(t('ast.'+k))}</span>`).join('')}</div>`;
+}
+
+// Quadro do hotel: a história das faturas dele e um recibo simulado de "antecipar tudo hoje"
+function quadroHotel(id){
+  const h = X.hotelPor(id); if(!h) return; const P = params();
+  const rs = FAT.filter(f=> f.hotel_id===id).map(f=> ({ f, c:calc(f) })).sort((a,b)=> a.f.competencia.localeCompare(b.f.competencia));
+  const eleg = rs.filter(r=> r.c.elegivel), liq = eleg.reduce((a,r)=>a+r.c.liquido,0), sp = eleg.reduce((a,r)=>a+r.c.desconto,0), rec = liq - sp;
+  const m = v => X.fMoeda(v, h.moeda);
+  const hoje = new Date().toLocaleDateString(loc(), { day:'2-digit', month:'long', year:'numeric' });
+  X.abrirModal(`<div class="modal-h"><div><h3>${esc(h.nome)}</h3><div class="sub"><span class="mono">${esc(h.base)}</span>${h.cidade?' · '+esc(h.cidade):''} · ${esc(t('ant.q.sub'))}</div></div><button class="x" data-close aria-label="${esc(t('pn.fechar'))}">✕</button></div>
+    <div class="modal-b">
+      <div class="tl-scroll"><table class="ant-tab"><thead><tr><th>${esc(t('ant.competencia'))}</th><th class="r">${esc(t('ant.noites'))}</th><th class="r">${esc(t('ant.liquido'))}</th><th>${esc(t('ant.previsao'))}</th><th class="r">${esc(t('ant.recebe'))}</th><th>${esc(t('ant.status'))}</th></tr></thead><tbody>
+        ${rs.map(({f,c})=>`<tr class="clk" data-fat="${f.id}"><td style="text-transform:capitalize">${esc(fMes(f.competencia))}</td><td class="mono r">${f.noites}</td><td class="mono r">${m(c.liquido)}</td><td class="mono">${esc(fData(f.previsao))}<div class="sub">${c.dias>0?esc(t('ant.em_dias',{n:c.dias})):esc(t('ant.vencida'))}</div></td><td class="mono r">${c.elegivel?'<b>'+m(c.hotelRecebe)+'</b>':'—'}</td><td><span class="pill ast-${f.status}">${esc(t('ast.'+f.status))}</span></td></tr>`).join('')}</tbody></table></div>
+      ${eleg.length ? `<div class="recibo" id="an-recibo">
+        <div class="rc-h"><b>${esc(t('ant.q.recibo'))}</b><span class="tag amber">${esc(t('ant.q.simulado'))}</span></div>
+        <div class="sub">${esc(t('ant.q.recibo_sub',{d:hoje, n:eleg.length}))}</div>
+        <div class="sim">
+          <div class="sim-l"><span>${esc(t('ant.q.esperar'))}</span><b class="mono">${m(liq)}</b></div>
+          <div class="sim-l"><span>− ${esc(t('ant.taxa'))} (${pct(liq ? (sp - P.fixa*eleg.length)/liq*100 : 0)} ${esc(t('ant.q.media'))})</span><b class="mono">${m(sp - P.fixa*eleg.length)}</b></div>
+          <div class="sim-l"><span>− ${esc(t('ant.taxa_fixa'))} × ${eleg.length}</span><b class="mono">${m(P.fixa*eleg.length)}</b></div>
+          <div class="sim-l total"><span>${esc(t('ant.q.recebe_hoje'))}</span><b class="mono">${m(rec)}</b></div>
+          <div class="sim-l spread"><span>${esc(t('ant.nosso_spread'))} (${pct(liq ? sp/liq*100 : 0)})</span><b class="mono">${m(sp)}</b></div>
+        </div>
+        <div class="sub">${esc(t('ant.q.ganho',{d:Math.round(eleg.reduce((a,r)=>a+r.c.dias*r.c.liquido,0)/Math.max(1,liq))}))}</div></div>` : `<div class="empty">${esc(t('ant.q.nada'))}</div>`}
+    </div>
+    <div class="modal-f"><button class="btn" type="button" id="an-imp" style="margin-right:auto"${eleg.length?'':' disabled'}>🖨 ${esc(t('ant.q.imprimir'))}</button><button class="btn pri" data-close type="button">${esc(t('nov.ok'))}</button></div>`, bg=>{
+      bg.querySelector('.modal').style.width = 'min(780px,100%)';
+      $$('tr[data-fat]', bg).forEach(tr=> tr.addEventListener('click', ()=>{ X.fecharModal(); modalAntecipar(FAT.find(f=>f.id===tr.dataset.fat)); }));
+      const imp = $('#an-imp', bg); if(imp) imp.addEventListener('click', ()=>{ document.body.classList.add('imprimindo-recibo'); window.print(); setTimeout(()=> document.body.classList.remove('imprimindo-recibo'), 500); });
+  });
 }
 
 async function salvarFatura(f, campos, acao){
@@ -166,7 +222,29 @@ const css = document.createElement('style'); css.textContent = `
   .sim{display:grid;gap:2px;background:var(--panel-2);border-radius:10px;padding:10px 12px}
   .sim-l{display:flex;justify-content:space-between;gap:12px;padding:5px 0;border-bottom:1px dashed var(--line)} .sim-l:last-child{border-bottom:0}
   .sim-l span{color:var(--ink-2)} .sim-l.forte b{font-weight:700} .sim-l.total{font-size:15px} .sim-l.total b{color:var(--accent);font-weight:700} .sim-l.spread b{color:var(--green);font-weight:700}
+  .kpi-pct{font-style:normal;font-size:13px;color:var(--green);background:var(--green-soft);border-radius:6px;padding:1px 6px;margin-left:4px;vertical-align:3px}
+  .ant-conta{padding:10px 14px;font-size:12.5px;color:var(--ink-2);line-height:1.5} .ant-conta b{color:var(--ink)}
+  .ant-tab tr.clk{cursor:pointer} .ant-tab tr.clk:hover td{background:var(--panel-2)} .ant-tab .hn{cursor:pointer} .ant-tab .hn:hover{text-decoration:underline}
+  .ant-tab th[title]{cursor:help}
+  .at-wrap{overflow:auto;max-height:calc(100vh - 330px);padding:0}
+  .at-grid{display:grid;min-width:calc(330px + var(--m) * 170px)}
+  .at-row{display:grid;grid-template-columns:330px repeat(var(--m), minmax(170px,1fr));border-bottom:1px solid var(--line)}
+  .at-head{position:sticky;top:0;z-index:3;background:var(--panel-2)}
+  .at-lab{position:sticky;left:0;z-index:2;background:var(--panel);display:flex;gap:6px;align-items:center;padding:6px 10px;border-right:1px solid var(--line);min-width:0}
+  .at-head .at-lab{background:var(--panel-2);flex-direction:column;align-items:flex-start;gap:0}
+  .at-lab .bc{width:34px;flex:none;font-size:11.5px;color:var(--ink-2)} .at-lab .hn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;font-weight:500} .at-lab .hn:hover{text-decoration:underline}
+  .at-mh{display:grid;padding:6px 10px;border-right:1px solid var(--line);gap:1px} .at-mh .mono{font-weight:600}
+  .at-c{margin:3px 4px;border-radius:6px;padding:4px 8px;display:grid;gap:0;cursor:pointer;border:1px solid transparent;font-size:11.5px}
+  .at-c b{font-size:12.5px} .at-c span{color:var(--ink-3);font-size:11px} .at-c:hover{outline:1.5px solid var(--accent)}
+  .at-c.vazio{cursor:default;color:var(--ink-3);text-align:center;background:none} .at-c.vazio:hover{outline:0}
+  .sp{font-style:normal;color:var(--green);font-weight:600}
+  .st-a_vencer{background:var(--blue-soft)} .st-ofertada{background:var(--amber-soft)} .st-aprovada{background:var(--accent-soft)} .st-paga{background:var(--green-soft)}
+  .st-recusada{background:var(--gray-soft);opacity:.75} .st-liquidada{background:var(--gray-soft);opacity:.6}
+  .at-leg{display:flex;gap:14px;flex-wrap:wrap} .at-leg i{display:inline-block;width:12px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+  .recibo{border:1px dashed var(--line-2);border-radius:12px;padding:12px 14px;display:grid;gap:8px;margin-top:12px} .rc-h{display:flex;gap:8px;align-items:center}
+  @media print{ body.imprimindo-recibo > *:not(.modal-bg){display:none !important} body.imprimindo-recibo .modal-f,body.imprimindo-recibo .x{display:none !important} body.imprimindo-recibo .modal-bg{position:static;background:none} }
   @media (max-width:1100px){ .kpis{grid-template-columns:repeat(2,minmax(0,1fr))} }
+  @media (max-width:760px){ .at-row{grid-template-columns:200px repeat(var(--m), minmax(150px,1fr))} .at-grid{min-width:calc(200px + var(--m) * 150px)} }
   @media (max-width:560px){ .kpis{grid-template-columns:1fr} }`;
 document.head.appendChild(css);
 })();
