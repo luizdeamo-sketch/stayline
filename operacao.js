@@ -12,6 +12,16 @@ const PXH = 14, ZOOM = [0.5, 0.75, 1, 1.5, 2], ROW = 30, LANE = 22, CRIT_H = 48,
 S.escala = S.escala || X.lsGet('sl_escala', 'dia');   // 'dia' (padrão: pernoite dura 24–36h) ou 'hora'
 S.zoomIdx = S.zoomIdx ?? 2; S.frac = S.frac ?? 0.36; S.abertos = S.abertos || new Set(); S.recolhidas = S.recolhidas || new Set(); S.ordem = S.ordem || 'urgencia';
 let primeiraVez = true;
+S.resFiltro = S.resFiltro || null; S.resNoite = S.resNoite || null; S.resAberto = S.resAberto ?? true;
+const livresDe = (h, n)=>{ const d = S.disp[h.id+'|'+n]; return d ? d.quartos_livres : Math.max(0, h.quartos_dia - X.usados(h.id, n)); };
+const ocupadosDe = (h, n)=> Math.max(0, h.quartos_dia - livresDe(h, n));
+// filtros do resumo: valem para todas as noites do período, ou só para a noite clicada
+const FILTROS_RES = {
+  gol: h=> (h.cliente||'').toUpperCase()==='GOL', azul: h=> (h.cliente||'').toUpperCase()==='AZUL',
+  ocupados: (h, ns)=> ns.some(n=> h.quartos_dia && ocupadosDe(h,n)/h.quartos_dia >= 0.5),
+  livres: (h, ns)=> ns.every(n=> h.quartos_dia && livresDe(h,n)/h.quartos_dia >= 0.5),
+  apertados: (h, ns)=> ns.some(n=> h.quartos_dia && livresDe(h,n)/h.quartos_dia < 0.2) };
+const passaRes = h=> !S.resFiltro || !FILTROS_RES[S.resFiltro] || FILTROS_RES[S.resFiltro](h, S.resNoite ? [S.resNoite] : noitesDoPeriodo());
 const todosAbertos = ()=> S.hoteis.filter(h=>h.ativo).every(h=> S.abertos.has(h.id));
 
 const ms = d => new Date(d).getTime();
@@ -71,6 +81,27 @@ function sobreposicao(comRotulos){
     <i class="ln-crit" style="left:${xc}px"></i>${comRotulos?`<span class="lb-crit" style="left:${xc}px">+${CRIT_H}h ${esc(tz(agora + CRIT_H*3600000))}</span>`:''}</div>`;
 }
 
+function resumo(hsBase, W){
+  const ns = noitesDoPeriodo(), pc = (a,b)=> b ? Math.round(a/b*100)+'%' : '–';
+  const pernNoite = {}; S.pern.forEach(p=>{ if(S.base && p.base!==S.base) return; if(p.situacao==='cancelado') return; const n = X.noiteDe(p); (pernNoite[n] = pernNoite[n] || []).push(p); });
+  const voos = (n, pref)=> new Set((pernNoite[n]||[]).filter(p=> (p.voo_chegada||'').toUpperCase().startsWith(pref)).map(p=> p.voo_chegada)).size;
+  const cap = n=> hsBase.reduce((a,h)=>a+h.quartos_dia,0), liv = n=> hsBase.reduce((a,h)=>a+livresDe(h,n),0);
+  const nHot = (k, n)=> hsBase.filter(h=> FILTROS_RES[k](h, [n])).length;
+  const linhas = [
+    { k:'gol', ico:'✈', rot:t('op.res.gol'), val:n=>{ const v = voos(n,'G3'); return v ? `<b>${v}</b>` : '·'; }, tot: ns.reduce((a,n)=>a+voos(n,'G3'),0)+' '+t('op.res.voos'), dica:t('op.res.gol_d') },
+    { k:'azul', ico:'✈', rot:t('op.res.azul'), val:n=>{ const v = voos(n,'AD'); return v ? `<b>${v}</b>` : '·'; }, tot: ns.reduce((a,n)=>a+voos(n,'AD'),0)+' '+t('op.res.voos'), dica:t('op.res.azul_d') },
+    { k:null, ico:'▦', rot:t('op.res.contrato'), val:n=> `<b>${cap(n)}</b>`, tot:'', dica:t('op.res.contrato_d') },
+    { k:'ocupados', ico:'●', rot:t('op.res.ocupados'), cls:'r-ocup', val:n=>{ const c = cap(n), o = c - liv(n); return `<b>${o}</b> <em>${pc(o,c)}</em>`; }, tot: t('op.res.n_hoteis',{n:hsBase.filter(h=>FILTROS_RES.ocupados(h,ns)).length}), dica:t('op.res.ocupados_d') },
+    { k:'livres', ico:'○', rot:t('op.res.livres'), cls:'r-livre', val:n=>{ const c = cap(n), l = liv(n); return `<b>${l}</b> <em>${pc(l,c)}</em>`; }, tot: t('op.res.n_hoteis',{n:hsBase.filter(h=>FILTROS_RES.livres(h,ns)).length}), dica:t('op.res.livres_d') },
+    { k:'apertados', ico:'▲', rot:t('op.res.apertados'), cls:'r-apert', val:n=>{ const v = nHot('apertados', n); return v ? `<b>${v}</b>` : '·'; }, tot: t('op.res.n_hoteis',{n:hsBase.filter(h=>FILTROS_RES.apertados(h,ns)).length}), dica:t('op.res.apertados_d') } ];
+  const cel = (r, n)=>{ const l = xDe(X.diaLocal(n,0)) + 2, w = 24*pxh() - 4, on = S.resFiltro===r.k && S.resNoite===n;
+    return `<div class="rc${on?' on':''}"${r.k?` data-res="${r.k}" data-res-n="${n}"`:''} style="left:${l}px;width:${w}px">${r.val(n)}</div>`; };
+  const cab = `<div class="tlg-row res-h"><div class="tlg-lab"><button type="button" class="chev" id="op-res-tg" aria-expanded="${S.resAberto}">${S.resAberto?'▾':'▸'}</button><b>${esc(t('op.res.titulo'))}</b>${S.resFiltro?` <button type="button" class="res-limpa" id="op-res-x" title="${esc(t('op.res.limpar'))}">${esc(t('op.res.filtro_'+S.resFiltro))}${S.resNoite?' · '+esc(X.diaLocal(S.resNoite,12).toLocaleDateString(loc(),{day:'2-digit',month:'2-digit'})):''} ✕</button>`:''}</div><div class="tlg-track" style="width:${W}px"></div></div>`;
+  if(!S.resAberto) return `<div class="tlg-res">${cab}</div>`;
+  return `<div class="tlg-res">${cab}${linhas.map(r=>`<div class="tlg-row res ${r.cls||''}${r.k && S.resFiltro===r.k && !S.resNoite?' on':''}"><div class="tlg-lab"${r.k?` data-res="${r.k}"`:''} title="${esc(r.dica)}"><span class="ri">${r.ico}</span><span class="rn">${esc(r.rot)}</span>${r.tot?`<span class="cnt2 ml">${esc(r.tot)}</span>`:''}</div>
+    <div class="tlg-track" style="width:${W}px">${ns.map(n=>cel(r,n)).join('')}</div></div>`).join('')}</div>`;
+}
+
 window.SL_renderOperacao = function(){
   const v = $('#view-operacao'); if(!v) return;
   // guarda a rolagem para não pular a cada alocação
@@ -98,7 +129,7 @@ window.SL_renderOperacao = function(){
   // painel de baixo: execução — hotéis por base
   const vis = lista.filter(p=>p.hotel_id);
   const htmlBot = base.map(b=>{
-    const hs = S.hoteis.filter(h=>h.base===b.codigo && h.ativo).sort((a,c)=> (a.tipo==='primario'?0:1)-(c.tipo==='primario'?0:1) || a.nome.localeCompare(c.nome));
+    const hs = S.hoteis.filter(h=>h.base===b.codigo && h.ativo && passaRes(h)).sort((a,c)=> (a.tipo==='primario'?0:1)-(c.tipo==='primario'?0:1) || a.nome.localeCompare(c.nome));
     if(!hs.length) return '';
     const unico = hs.length === 1;   // base com um hotel só vira uma linha (sem cabeçalho de grupo)
     const fechada = !unico && S.recolhidas.has(b.codigo);
@@ -111,6 +142,8 @@ window.SL_renderOperacao = function(){
       return `<div class="tlg-row hot${unico?' unico':''}${aberto?' aberto':''}" data-drop-hotel="${h.id}" style="height:${alt}px"><div class="tlg-lab"><button type="button" class="chev" data-hot="${h.id}" aria-expanded="${aberto}" title="${esc(aberto?t('op.fechar_hotel'):t('op.abrir_hotel'))}">${aberto?'▾':'▸'}</button>${unico?`<b class="bc mono" title="${esc(b.cidade)}">${esc(b.codigo)}</b>`:''}<span class="hn" data-ficha="${h.id}" title="${esc(h.nome+' — '+t('op.ficha'))}">${esc(h.nome)}</span>${h.aviso?`<span class="avi" title="${esc(h.aviso)}">⚠</span>`:''}${h.tipo!=='primario'?`<span class="tp" title="${esc(t('ht.secundario'))}">S</span>`:''}<span class="diaria mono">${esc(X.fMoeda(h.tarifa, h.moeda))}</span></div>
         <div class="tlg-track" style="width:${W}px">${aberto && ps.length ? ps.map(bloco).join('') : celulasOcupacao(n=>X.usados(h.id,n), h.quartos_dia, h.id)}</div></div>`; }).join('');
   }).join('');
+  const hsBase = S.hoteis.filter(h=> h.ativo && (!S.base || h.base===S.base));
+  const htmlRes = resumo(hsBase, W);
 
   const semPend = !pend.length;
   v.innerHTML = `
@@ -131,8 +164,8 @@ window.SL_renderOperacao = function(){
       <div class="op-sec${semPend?' vazio':''}" id="op-sec-top" style="flex:${semPend?'0 0 auto':'0 0 '+(S.frac*100)+'%'}"><div class="op-tit">⚠ ${esc(t('op.painel.abertos'))} <span class="sub">${semPend ? '✓ '+esc(t('op.vazio.top')) : esc(t('op.painel.n',{n:pend.length}))}</span><span class="leg"><i class="b2-a_alocar"></i>${esc(t('sit.a_alocar'))} <i class="b2-alocado"></i>${esc(t('sit.alocado'))} <i class="b2-a_reconfirmar"></i>${esc(t('sit.a_reconfirmar'))} <i class="b2-confirmado"></i>${esc(t('sit.confirmado'))}</span></div>
         <div class="op-scroll" id="op-top"${semPend?' hidden':''}><div class="tlg" style="width:calc(var(--lab) + ${W}px)">${cabecalho(porDia)}<div class="tlg-body com-rotulos">${sobreposicao(true)}${htmlTop || `<div class="empty">${esc(t('op.vazio.top'))}</div>`}</div></div></div></div>
       <div class="op-div" id="op-div"${semPend?' hidden':''} role="separator" aria-orientation="horizontal" title="${esc(t('op.divisor'))}"></div>
-      <div class="op-sec" style="flex:1 1 0"><div class="op-tit">${esc(t('op.painel.hoteis'))} <span class="sub">${esc(t('op.hoteis.n',{n:S.hoteis.filter(h=>h.ativo && (!S.base||h.base===S.base)).length}))}</span></div>
-        <div class="op-scroll" id="op-bot"><div class="tlg" style="width:calc(var(--lab) + ${W}px)">${cabecalho(null)}<div class="tlg-body">${sobreposicao(false)}${htmlBot}</div></div></div></div>
+      <div class="op-sec" style="flex:1 1 0"><div class="op-tit">${esc(t('op.painel.hoteis'))} <span class="sub">${esc(t('op.hoteis.n',{n:S.hoteis.filter(h=>h.ativo && (!S.base||h.base===S.base) && passaRes(h)).length}))}</span></div>
+        <div class="op-scroll" id="op-bot"><div class="tlg" style="width:calc(var(--lab) + ${W}px)">${cabecalho(null)}<div class="tlg-body">${sobreposicao(false)}${htmlRes}${htmlBot || `<div class="empty">${esc(t('op.res.nenhum'))}</div>`}</div></div></div></div>
     </div>`;
   ligar(v, antes);
 };
@@ -173,6 +206,10 @@ function ligar(v, antes){
     el.addEventListener('dragstart', e=>{ e.dataTransfer.setData('text/plain', el.dataset.p); e.dataTransfer.effectAllowed = 'move'; document.body.classList.add('arrastando'); });
     el.addEventListener('dragend', ()=> document.body.classList.remove('arrastando'));
   });
+  $$('[data-res]', v).forEach(el=> el.addEventListener('click', ()=>{ const k = el.dataset.res, n = el.dataset.resN || null;
+    if(S.resFiltro===k && S.resNoite===n){ S.resFiltro = null; S.resNoite = null; } else { S.resFiltro = k; S.resNoite = n; } X.render(); }));
+  const rx = $('#op-res-x', v); if(rx) rx.addEventListener('click', ()=>{ S.resFiltro = null; S.resNoite = null; X.render(); });
+  $('#op-res-tg', v).addEventListener('click', ()=>{ S.resAberto = !S.resAberto; X.render(); });
   $$('.occ2', v).forEach(el=> el.addEventListener('click', ()=>{ if(el.dataset.occ) window.SL_fichaHotel(el.dataset.occ); }));
   $$('[data-drop-hotel],[data-drop-base]', v).forEach(row=>{
     row.addEventListener('dragover', e=>{ e.preventDefault(); row.classList.add('sobre'); });
@@ -287,6 +324,16 @@ const css = document.createElement('style'); css.textContent = `
   .modo-dia .occ2{text-align:center} .modo-dia .tlg-track{background-image:linear-gradient(to right, var(--day-line) 1px, transparent 1px);background-size:calc(24 * ${PXH}px * var(--z)) 100%}
   .modo-dia .tlg-day{grid-template-rows:38px} .modo-dia .tlg-hr{display:none}
   .op-esc button{padding:4px 10px;height:28px}
+  .tlg-res{position:sticky;top:38px;z-index:15;background:var(--panel);box-shadow:0 2px 0 var(--line-2)}
+  .tlg-row.res-h{height:24px} .tlg-row.res-h .tlg-lab{padding-top:3px;font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-2);background:var(--panel-2);align-items:center} .tlg-row.res-h .tlg-track{background:var(--panel-2)}
+  .tlg-row.res{height:24px;background:var(--panel)} .tlg-row.res .tlg-lab{padding-top:3px;cursor:pointer;font-size:12px;align-items:center}
+  .tlg-row.res .tlg-lab:hover .rn{text-decoration:underline} .tlg-row.res.on .tlg-lab{background:var(--accent-soft);box-shadow:inset 3px 0 0 var(--accent)}
+  .tlg-row.res .ri{width:14px;text-align:center;color:var(--ink-3);flex:none} .tlg-row.res .rn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+  .rc{position:absolute;top:2px;height:20px;line-height:20px;text-align:center;font-family:var(--fm);font-size:11.5px;color:var(--ink-3);border-radius:4px}
+  .rc[data-res]{cursor:pointer} .rc[data-res]:hover{background:var(--gray-soft)} .rc.on{background:var(--accent-soft);outline:1.5px solid var(--accent)}
+  .rc b{color:var(--ink);font-weight:700} .rc em{font-style:normal;color:var(--ink-3);margin-left:4px}
+  .r-ocup .ri,.r-ocup .rc b{color:var(--blue)} .r-livre .ri,.r-livre .rc b{color:var(--green)} .r-apert .ri,.r-apert .rc b{color:var(--red)}
+  .res-limpa{border:1px solid var(--accent);background:var(--accent-soft);color:var(--accent);border-radius:999px;font-size:11px;padding:0 8px;text-transform:none;letter-spacing:0;margin-left:6px;cursor:pointer}
   .tlg-row.grp .occ2{height:18px;top:6px}
   @media (max-width:1800px){ .op-cnt .chip span{display:none} }
   @media (max-width:760px){ :root{ --lab:170px } .op-tit .leg{display:none} .op-bar #h-busca{width:100%} .op-bar .grow{display:none} }`;
